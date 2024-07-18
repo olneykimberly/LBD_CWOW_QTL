@@ -30,6 +30,19 @@ plink --bfile 632_CWOW --check-sex --out sex_check
 ### Step 2: Remove excluded IIDs
 Remove individuals that don't have corresponding RNA data, remove a individual from each sample pair. A list of samples to exclude was created when running the R script 01_check_meta.Rmd
 ```
-plink --bfile yourdata_with_sex --remove exclude.txt --make-bed --out yourdata_filtered
+cd snp_array # move to the snp folder
+plink --bfile 632_CWOW --remove ../metadata/exclude_fam_IID.txt --make-bed --out Filtered_n598_CWOW
+
+plink --bfile CWOW_TOPMED_Rsq08_QC --remove ../metadata/exclude_fam_IID_for_imputed_files.txt --make-bed --out Filtered_n598_CWOW_TOPMED_Rsq08_QC
+
+plink --bfile CWOW_TOPMED_Rsq08_QC_maf01 --remove ../metadata/exclude_fam_IID_for_imputed_files.txt --make-bed --out Filtered_n598_CWOW_TOPMED_Rsq08_QC_maf01
+
+# inspect filtering
+wc -l Filtered_n598_CWOW_TOPMED_Rsq08_QC.fam # there should be 598
 ```
 
+### Step 3: Create genotype file
+Convert PLINK files 
+```
+plink --bfile Filtered_n598_CWOW --recodeA --out Filtered_n598_CWOW_genotype    
+```

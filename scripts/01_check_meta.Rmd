@@ -23,7 +23,7 @@ library(data.table)
 # Metadata
 ```{r metadata}
 # Read in metadata file from the gene expression study
-metadata <- read.delim("../expression_metadata.txt")
+metadata <- read.delim("../metadata/expression_metadata.txt")
 
 # Create an IID column using the NPID sample IDs
 metadata$IID <- ifelse(
@@ -47,7 +47,8 @@ A .fam file consists of 6 columns where each row describes one sample:\
 6. phenotype (1=Control, 2=Case, -9=Unknown)\
 ```{r fam}
 # read in .fam data
-fam <- fread("/research/labs/neurology/fryer/projects/LBD_CWOW/snp_array/632_CWOW.fam")
+fam <- fread("../snp_array/632_CWOW.fam")
+fam_imputed <- fread("../snp_array/CWOW_TOPMED_Rsq08_QC.fam")
 
 # Rename columns
 fam <- fam %>%
@@ -114,14 +115,28 @@ ex_related <- c("MC10078", "MC07261")
 exclude_fam_IID <- union(unqiue_fam, non_matching_rows$IID)
 exclude_IID <- union(exclude_fam_IID, ex_related)
 # Output the list of exclude IIDs that we will exclude downstream
-write.table(exclude_IID, "exclude_fam_IID.txt")
+# The file needs both fam ID and individual ID
+exclude_IID_df <- as.data.frame(exclude_IID)
+exclude_IID_df$FID <- exclude_IID_df$exclude_IID # Fam ID same as IID
+# since fam is same as IID we don't need to reorder the columns
+write.table(exclude_IID_df, "../metadata/exclude_fam_IID.txt", row.names = FALSE, quote = FALSE, col.names = FALSE)
+
+# Now in the imputed files the fam is 0
+# write an exclude table with fam 0 
+exclude_IID_df$FID <- NULL
+exclude_IID_df$FID <- c(0)
+
+exclude_IID_df_Fam_first <- exclude_IID_df[, c("FID", "exclude_IID")]
+
+write.table(exclude_IID_df_Fam_first, "../metadata/exclude_fam_IID_for_imputed_files.txt", row.names = FALSE, quote = FALSE, col.names = FALSE)
+
 
 # Output the metadata containing both the fam and RNA metadata
 # Samples in the filtered metadata are samples that have both RNA data and SNP data
 filtered_meta <- subset(filter_meta, !(IID %in% exclude_IID))
-filtered_fam <- subset(fam, IID %in% test$IID)
+filtered_fam <- subset(fam, IID %in% filtered_meta$IID)
 
-write.table(filtered_meta, "../filtered_metadata.txt")
+write.table(filtered_meta, "../metadata/filtered_metadata.txt", row.names = FALSE, quote = FALSE)
 ```
 
 
