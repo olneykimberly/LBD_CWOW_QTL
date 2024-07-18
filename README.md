@@ -2,7 +2,7 @@
 Expression quantitative trait loci (eQTL)
 
 SNP array data available on Synapse: syn51238188\
-Bulk RNAseq expressiond data available on Synapse: syn52394100\
+Bulk RNAseq expressiond data available on Synapse: syn52394100
 
 ## Set up conda environment
 This workflow uses conda. For information on how to install conda [here](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html)
