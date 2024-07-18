@@ -1,0 +1,120 @@
+---
+title: "Metadata"
+author: "Kimberly Olney, Ph.D."
+date: "07/18/2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+params:
+  args: myarg
+---
+
+Bulk RNAseq gene expression data used in this study is from the published manuscript "Distinct transcriptional alterations distinguish Lewy body disease from Alzheimer’s disease" by Olney et al. 2024, Brain\
+Counts data is available on Synapse: syn52394100\
+
+# Setup
+```{r setup}
+knitr::opts_knit$set(root.dir = ".")
+library(dplyr)
+library(data.table)
+```
+
+# Metadata
+```{r metadata}
+# Read in metadata file from the gene expression study
+metadata <- read.delim("../expression_metadata.txt")
+
+# Create an IID column using the NPID sample IDs
+metadata$IID <- ifelse(
+  grepl("NA", metadata$NPID),
+  gsub("NA", "MC", gsub("-", "", metadata$NPID)),
+  paste0("MC", gsub("-", "", metadata$NPID))
+)
+
+# Create a sex column; sex (1 = male, 2 = female)
+metadata <- metadata %>%
+  mutate(Sex_RNA = ifelse(sex_inferred == "male", 1, 2))
+```
+
+# Fam file
+A .fam file consists of 6 columns where each row describes one sample:\
+1. Family ID (FID)\
+2. Individual ID (IID)\
+3. Maternal ID (MID)\
+4. Paternal ID (PID)\
+5. Sex (1=Male,2=Female,-9=Unknown)\
+6. phenotype (1=Control, 2=Case, -9=Unknown)\
+```{r fam}
+# read in .fam data
+fam <- fread("/research/labs/neurology/fryer/projects/LBD_CWOW/snp_array/632_CWOW.fam")
+
+# Rename columns
+fam <- fam %>%
+  rename(
+    FID = V1,
+    IID = V2, 
+    MID = V3,
+    PID = V4, 
+    Sex = V5,
+    Pheno = V6
+  )
+```
+
+# Check data 
+What samples are unique to either data set?
+Does the sex match?
+```{r check_data}
+# Which IIDs are unique to either set? 
+unqiue_fam <- setdiff(fam$IID, metadata$IID)
+unqiue_meta <- setdiff(metadata$IID, fam$IID)
+
+# Merge .fam data with metadata
+fam_meta <- merge(fam, metadata, by = "IID")
+
+# Check if the sex in fam match the inferred sex from the the RNA
+matches <- fam_meta$Sex.x == fam_meta$Sex_RNA
+table(matches) # There are three mis-matches
+# Insepect the mismatches
+non_matching_rows <- fam_meta[!matches, ]
+# These non matches are the three that we identified to be incorrectly sex annotated in the RNA expression. 
+# The plink sex check says that are correctly annotated, so we will remove so as to not cause downstream issues.
+filter_meta <- subset(fam_meta, !(IID %in% non_matching_rows$IID))
+```
+
+# Investigate related pairs
+```{r related_pairs}
+# There are related pairs. We will add a sample from each pair to the exclude list
+#MC10078-MC05057, exclude MC10078 (LBD) since MC05057 is AD. Also, MC10078 has poor RIN
+#MC13264-MC17200
+#MC07261-MC09314, exclude MC07261 since MC09314 is a clean control 
+related_pairs <- c("MC05057", "MC10078", "MC13264", "MC17200", "MC07261", "MC09314")
+# setdiff(related_pairs, metadata$IID)
+# MC13264 not in metadata 
+
+# related pairs metadata
+related_pairs_meta <- subset(filter_meta, IID %in% related_pairs)
+
+# related_pairs exclude list
+ex_related <- c("MC10078", "MC07261")
+```
+
+# Exclude IIDs
+```{r exclude_IDs}
+# Write a table of the IIDs that are unique to .fam 
+# and the three sex mix-matches to exclude
+# Add a sample from each related pair 
+exclude_fam_IID <- union(unqiue_fam, non_matching_rows$IID)
+exclude_IID <- union(exclude_fam_IID, ex_related)
+# Output the list of exclude IIDs that we will exclude downstream
+write.table(exclude_IID, "exclude_fam_IID.txt")
+
+# Output the metadata containing both the fam and RNA metadata
+# Samples in the filtered metadata are samples that have both RNA data and SNP data
+filtered_meta <- subset(filter_meta, !(IID %in% exclude_IID))
+filtered_fam <- subset(fam, IID %in% test$IID)
+
+write.table(filtered_meta, "../filtered_metadata.txt")
+```
+
+
