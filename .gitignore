@@ -3,3 +3,4 @@
 .RData
 .Ruserdata
 snp_array/*
+scripts/example_Matrix_eQTL/*
