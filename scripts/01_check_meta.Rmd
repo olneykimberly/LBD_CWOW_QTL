@@ -83,6 +83,13 @@ filter_meta <- subset(fam_meta, !(IID %in% non_matching_rows$IID))
 ```
 
 # Investigate related pairs
+Identity by descent analysis (IBD) was performed on the original (un-imputed) files and we identified 3 pairs of individuals that are potentially related PI_HAT > 0.25.\
+For any future analysis we recommend excluding an individual from each of the following pairs.
+
+MC10078-MC05057
+MC13264-MC17200
+MC07261-MC09314
+
 ```{r related_pairs}
 # There are related pairs. We will add a sample from each pair to the exclude list
 #MC10078-MC05057, exclude MC10078 (LBD) since MC05057 is AD. Also, MC10078 has poor RIN
