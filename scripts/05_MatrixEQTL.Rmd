@@ -1,0 +1,188 @@
+---
+title: "03_MatrixEQTL"
+output: html_document
+date: "2024-07-19"
+---
+
+# Setup
+```{r setup}
+knitr::opts_knit$set(root.dir = ".")
+library(dplyr)
+library(data.table)
+library(MatrixEQTL)
+```
+
+# MatrixEQTL
+```{r}
+# Thresholds 
+pvOutputThreshold = 1e-8
+useModel = modelLINEAR # modelANOVA or modelLINEAR or modelLINEAR_CROSS
+
+snps = SlicedData$new()
+snps$fileDelimiter = " "      # the TAB character
+snps$fileOmitCharacters = "NA" # denote missing values
+snps$fileSkipRows = 1          # one row of column labels
+snps$fileSkipColumns = 1       # one column of row labels
+snps$fileSliceSize = 2000      # read file in pieces of 2,000 rows
+snps$LoadFile("../snp_array/Filtered_n598_CWOW_genotype_data.txt")
+
+gene = SlicedData$new()
+gene$fileDelimiter = "\t"      # the TAB character
+gene$fileOmitCharacters = "NA" # denote missing values
+gene$fileSkipRows = 1          # one row of column labels
+gene$fileSkipColumns = 1       # one column of row labels
+gene$fileSliceSize = 2000      # read file in pieces of 2,000 rows
+gene$LoadFile("../RNA_counts/n598_counts_filtered.txt")
+
+cvrt = SlicedData$new()
+cvrt$fileDelimiter = "\t"      # the TAB character
+cvrt$fileOmitCharacters = "NA" # denote missing values
+cvrt$fileSkipRows = 1          # one row of column labels
+cvrt$fileSkipColumns = 1       # one column of row labels
+cvrt$fileSliceSize = 2000      # read file in pieces of 2,000 rows
+cvrt$LoadFile( covariates_file_name )
+
+me = Matrix_eQTL_engine(
+    snps = snps,
+    gene = gene,
+    #cvrt = metadata,
+    output_file_name = "test",
+    pvOutputThreshold = pvOutputThreshold,
+    useModel = useModel,
+   # errorCovariance = errorCovariance,
+    verbose = TRUE,
+    pvalue.hist = TRUE,
+    min.pv.by.genesnp = FALSE,
+    noFDRsaveMemory = FALSE)
+```
+
+```{r}
+me$all$ntests
+eqlts <- me$all$eqtls
+me$all$ntests/nrow(genotype_data) 
+threshold <- 0.05/me$all$ntests 
+eqtls <- me$all$eqtls
+eqtls <- eqtls[which(eqtls$pvalue < threshold),]
+nrow(eqtls)
+idx <- which.min(eqtls$pvalue)
+eqtls[idx,]
+
+top.gene <- as.character(eqtls$gene[idx])
+top.snp <- as.character(eqtls$snps[idx])
+top.gene
+
+
+
+sliced.data.row <- function(object, row) {
+    if (is.factor(row))
+        row <- as.character(row)
+    if (is.character(row)) {
+        row <- which(rownames(object) == row)
+        if (length(row) == 0)
+            stop("Invalid row")
+    }
+    slice.size <- nrow(object[[1]])
+    slice.idx <- floor(row/slice.size) + 1
+    slice <- object[[slice.idx]]
+    row <- row - slice.size * (slice.idx - 1)
+    ret <- slice[row,]
+    names(ret) <- colnames(object)
+    ret             
+}
+```
+
+```{r}
+genotype_data <- fread("../snp_array/Filtered_n598_CWOW_genotype_data.txt")
+expression_data <- fread("../RNA_counts/n598_counts_filtered.txt")
+top.snp <- "rs16837009_A"
+top.gene <- "CCL4L2"
+rownames(genotype_data) <- genotype_data$V1
+genotype_data$V1 <- NULL
+genotype_data$snp <- rownames(genotype_data)
+genotypes <- sliced.data.row(genotype_data, top.snp)
+snpoi <- subset(genotype_data, snp == top.snp) 
+genotypes <- factor(snpoi, levels=0:2, labels=c("0","1","2"))
+expression.levels <- sliced.data.row(expression_data, top.gene)
+expoi <- subset(expression_data, V1 == top.gene)
+expoi$V1 <- NULL
+df <- as.data.frame(expoi)
+mdf <- melt(df)
+genotypes
+geno <- as.data.frame(genotypes) 
+geno_df <- geno[rownames(geno) != "snp", ]
+
+#pdf(file.path(out.dir, "top-snp-gene.pdf"))
+boxplot(mdf$value ~ geno_df,
+        main=paste(top.snp,top.gene),
+        ylim=range(expoi),
+        outline=F)
+stripchart(mdf$value ~ geno_df,
+           method="jitter", add=TRUE, vertical=TRUE,
+           col=c("blue","orange","black"), pch=19)
+#dev.off()
+
+```
+
+```{r}
+sig_eqtl <- subset(eqlts, eqlts$FDR < 0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001)
+
+sig_eqtl$pvalue
+# Create the plot
+library(ggplot2)
+ggplot2eqtl_plot <- ggplot(sig_eqtl, aes(x = snps, y = gene, color = -log10(pvalue))) +
+  geom_point() +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "eQTL Plot",
+       x = "SNP",
+       y = "Gene",
+       color = "-log10(p-value)") +
+  theme_minimal()
+
+# Display the plot
+print(ggplot2eqtl_plot)
+
+# Customize the plot
+ggplot2eqtl_plot <- ggplot2eqtl_plot +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(angle = 0, hjust = 1),
+        plot.title = element_text(hjust = 0.5)) +
+  guides(color = guide_colorbar(barwidth = 10, barheight = 1))
+
+# Display the customized plot
+print(ggplot2eqtl_plot)
+
+
+genotype_data <- fread("../snp_array/Filtered_n598_CWOW_genotype_data.txt")
+expression_data <- fread("../RNA_counts/n598_counts_filtered.txt")
+```
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Sample genotype data (replace with your actual data)
+genotype_data <- data.frame(
+  SampleID = c("MC00092", "MC00094", "MC00118", "MC00151", "MC00190", "MC01163"),
+  Genotype = c(1, 0, 2, 0, 2, 0) # Add your actual genotype data here
+)
+
+# Sample expression data (replace with your actual data)
+expression_data <- data.frame(
+  SampleID = c("MC00092", "MC00094", "MC00118", "MC00151", "MC00190", "MC01163"),
+  Expression = c(0.182, 0.207, 0.041, 0.300, 0.054, 0.057) # Add your actual expression data here
+)
+
+# Merge data by SampleID
+merged_data <- inner_join(genotype_data, expression_data, by = "SampleID")
+
+# Create the plot
+ggplot(merged_data, aes(x = Genotype, y = Expression)) +
+  geom_point() +
+  labs(title = "eQTL Plot",
+       x = "Genotype (0: Homozygous Reference, 1: Heterozygous, 2: Homozygous Alternate)",
+       y = "Expression Level") +
+  theme_minimal()
+
+https://github.com/perishky/matrixeqtl-tutorial
+```

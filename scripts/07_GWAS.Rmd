@@ -1,0 +1,47 @@
+---
+title: "Check SNP array"
+author: "Kimberly Olney, Ph.D."
+date: "07/23/2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+params:
+  args: myarg
+---
+# Setup
+```{r setup}
+knitr::opts_knit$set(root.dir = ".")
+library(dplyr)
+library(data.table)
+library(MatrixEQTL)
+library(ggplot2)
+library(qqman)
+```
+
+# Read Omni SNP annotation and bed file 
+```{r omni}
+omni_bed <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.bed", skip = 1, header = FALSE) # Skip the first line 
+table(omni_bed$V1)
+
+snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated.txt", header = TRUE,  fill=TRUE)
+snp_anno$gene <- sub(",.*", "", snp_anno$`Gene(s)`) # create a gene column 
+snp_anno$SNP <- snp_anno$Name # create a SNP column for downstream matching 
+```
+
+# GWAS 
+```{r}
+gwas <- fread("../snp_array/braak_gwas_results.qassoc")
+```
+
+```{r}
+gwas_snp <- merge(gwas, snp_anno, by = "SNP")
+sig <- subset(gwas_snp, P < 0.001)
+unique(sig$gene)
+subset(gwas_snp, gene == "MAPT")
+```
+
+
+
+
+

@@ -27,6 +27,13 @@ R 01_check_meta.Rmd
 plink --bfile 632_CWOW --check-sex --out sex_check
 ```
 
+### Step 2: Create a covariates file 
+Add sex information to the .fam file, check for sex discrepancies with PLINK, and remove individuals from related pairs. 
+```
+R 01_check_meta.Rmd
+plink --bfile 632_CWOW --check-sex --out sex_check
+```
+
 ### Step 2: Remove excluded IIDs
 Remove individuals that don't have corresponding RNA data, remove a individual from each sample pair. A list of samples to exclude was created when running the R script 01_check_meta.Rmd
 ```
@@ -39,6 +46,12 @@ plink --bfile CWOW_TOPMED_Rsq08_QC_maf01 --remove ../metadata/exclude_fam_IID_fo
 
 # inspect filtering
 wc -l Filtered_n598_CWOW_TOPMED_Rsq08_QC.fam # there should be 598
+```
+
+### Step 3: Create genotype file
+Convert PLINK files 
+```
+plink --bfile Filtered_n598_CWOW --recodeA --out Filtered_n598_CWOW_genotype    
 ```
 
 ### Step 3: Create genotype file

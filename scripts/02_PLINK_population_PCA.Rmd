@@ -1,0 +1,54 @@
+---
+title: "Population PCA"
+author: "Kimberly Olney, Ph.D."
+date: "07/18/2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+params:
+  args: myarg
+---
+
+# Setup
+```{r setup}
+knitr::opts_knit$set(root.dir = ".")
+library(data.table)
+library(ggplot2)
+# Read in metadata filtered metadata file 
+metadata <- read.delim("../metadata/filtered_metadata.txt")
+```
+
+# PLINK PCA
+plink --bfile n598_qc_data --pca --out n598_pca
+```{r plink_pca}
+# Read the PCA data
+pca_data <- fread("../snp_array/n598_pca.eigenvec")
+colnames(pca_data) <- c("FID", "IID", paste0("PC", 1:(ncol(pca_data)-2)))
+
+# Merge the PCA data with population information
+merged_data <- merge(pca_data, metadata, by=c("FID", "IID"))
+```
+
+# Plot PCA 
+```{r PCA}
+# Plot the first two principal components
+ggplot(merged_data, aes(x=PC1, y=PC2, color=Race)) +
+  geom_point(size=2, alpha=0.6) +
+  labs(title="PLINK PCA Plot",
+       x="Principal Component 1",
+       y="Principal Component 2") +
+  theme_minimal() +
+  geom_text(aes(label = NPID), vjust = -0.5, hjust = 0.5, size = 3, show.legend = FALSE) +
+  guides(color = guide_legend(title = "Reported race"))
+
+
+ggplot(merged_data, aes(x=PC2, y=PC3, color=Race)) +
+  geom_point(size=2, alpha=0.6) +
+  labs(title="PLINK PCA Plot",
+       x="Principal Component 2",
+       y="Principal Component 3") +
+  theme_minimal()  +
+  geom_text(aes(label = NPID), vjust = -0.5, hjust = 0.5, size = 3, show.legend = FALSE) +
+  guides(color = guide_legend(title = "Reported race"))
+```

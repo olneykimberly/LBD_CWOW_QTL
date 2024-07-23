@@ -1,5 +1,5 @@
 ---
-title: "Metadata"
+title: "Metadata checks"
 author: "Kimberly Olney, Ph.D."
 date: "07/18/2024"
 output:
@@ -136,7 +136,7 @@ write.table(exclude_IID_df_Fam_first, "../metadata/exclude_fam_IID_for_imputed_f
 filtered_meta <- subset(filter_meta, !(IID %in% exclude_IID))
 filtered_fam <- subset(fam, IID %in% filtered_meta$IID)
 
-write.table(filtered_meta, "../metadata/filtered_metadata.txt", row.names = FALSE, quote = FALSE)
+write.table(filtered_meta, "../metadata/filtered_metadata.txt", row.names = FALSE, quote = FALSE, sep = "\t")
 ```
 
 
