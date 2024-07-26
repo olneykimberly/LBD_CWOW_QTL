@@ -47,9 +47,7 @@ R 02_PLINK_population_PCA.Rmd
 ```
 The above PCA only contains individuals in the CWOW dataset. The identification of individuals of divergent ancestry can be achieved by combining the genotypes of the the CWOW population with genotypes of a reference dataset consisting of individuals from known ethnicities (for instance individuals from the Hapmap or 1000 genomes study). Below describes how to download the HapMap III data and merge with the CWOW data. 
 
-
-
-# Reference HAPMAP data 
+#### Reference HAPMAP data 
 Following the tutorial outlined here: https://meyer-lab-cshl.github.io/plinkQC/articles/HapMap.html
 ```
 # First create a reference folder in which the hapmap data will be stored
@@ -100,113 +98,110 @@ awk '{print $4, $3}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.pos
 # update the hapmap reference by extracting the mappable variants from the old build and update their position. 
 plink --bfile HapMapIII_NCBI36 --extract HapMapIII_CGRCh38.snps --update-map HapMapIII_CGRCh38.pos --make-bed --out HapMapIII_CGRCh38
 ```
-
 After the above steps, the HapMap III dataset can be used for inferring study ancestry as described below. 
 
-Filter reference and study data for non A-T or G-C SNPs
+#### Match CWOW genotypes with hapmap reference data
+In order to compute joint principal components of the reference hapmap and the CWOW study population, we’ll need to combine the two datasets. The plink –merge function enables this merge, but requires the variants in the datasets to be matching by chromosome, position and alleles. The following sections show how to extract the relevant data from the reference and study dataset and how to filter matching variants, as described here: https://meyer-lab-cshl.github.io/plinkQC/articles/AncestryCheck.html
+
+Filter reference and study data for non A-T or G-C SNPs. These SNPs are more difficult to align and only a subset of SNPs is required for the analysis, we will remove them from both the reference and study data set.
 ```
-awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" \
-                        || $5$6 == "AT" || $5$6 == "TA")  {print $2}' \
-    Filtered_n598_CWOW.bim  > \
-    Filtered_n598_CWOW.ac_gt_snps
-
-awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" \
-                        || $5$6 == "AT" || $5$6 == "TA")  {print $2}' \
-    reference/HapMapIII_CGRCh37.bim > \
-    HapMapIII_CGRCh37.ac_gt_snps
-   
-plink --bfile  reference/HapMapIII_CGRCh37 \
-      --exclude HapMapIII_CGRCh37.bim.ac_gt_snps \
-      --make-bed \
-      --out HapMapIII_CGRCh37.ac_gt_snps.no_ac_gt_snps
-
-plink --bfile  Filtered_n598_CWOW \
-      --exclude Filtered_n598_CWOW.ac_gt_snps \
-      --make-bed \
-      --out Filtered_n598_CWOW.no_ac_gt_snps
+cd ../ # Move out of the reference folder and into the snp_array folder 
+# Filter CWOW data and create bed file 
+awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA")  {print $2}' Filtered_n598_CWOW.bim  > Filtered_n598_CWOW.ac_gt_snps
+plink --bfile  Filtered_n598_CWOW --exclude Filtered_n598_CWOW.ac_gt_snps --make-bed --out Filtered_n598_CWOW.no_ac_gt_snps
+      
+# Filter hapmap data and create bed file 
+awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA")  {print $2}' reference/HapMapIII_CGRCh38.bim > HapMapIII_CGRCh38.ac_gt_snps
+plink --bfile  reference/HapMapIII_CGRCh38 --exclude HapMapIII_CGRCh38.bim.ac_gt_snps --make-bed --out HapMapIII_CGRCh38.ac_gt_snps.no_ac_gt_snps
 ```
 
-# Prune
+#### Prune
+Conduct principle component analysis on genetic variants that are pruned for variants in linkage disequilibrium (LD) with an 𝑟2>0.2 in a 50kb window. The LD-pruned dataset is generated below, using plink–indep-pairwise to compute the LD-variants. additionally exclude range is used to remove genomic ranges of known high-LD structure. This file was originally provided by [6] and is available in file.path(find.package('plinkQC'),'extdata','high-LD-regions.txt').
 ```
+# Create prune in file 
 plink --bfile  Filtered_n598_CWOW.no_ac_gt_snps \
-      --exclude range  /research/labs/neurology/fryer/m239830/home/R/x86_64-pc-linux-gnu-library/4.3/plinkQC/extdata/high-LD-regions-hg38-GRCh38.txt \
+      --exclude range  reference/high-LD-regions-hg38-GRCh38.txt \
       --indep-pairwise 50 5 0.2 \
       --out Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps
 
+# Create bed file of the newly pruned data
 plink --bfile  Filtered_n598_CWOW.no_ac_gt_snps \
       --extract Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps.prune.in \
       --make-bed \
       --out Filtered_n598_CWOW.no_ac_gt_snps.pruned
-mv  $qcdir/$name.pruned.log $qcdir/plink_log/$name.pruned.log
-```
 
-```
-plink --bfile  reference/HapMapIII_CGRCh37 \
+# Filter hapmap reference data for the same SNP set as in the CWOW study
+plink --bfile  reference/HapMapIII_CGRCh38 \
       --extract Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps.prune.in \
       --make-bed \
-      --out HapMapIII_CGRCh37.pruned
+      --out reference/HapMapIII_CGRCh38.pruned
 ```
 
+Check and correct chromosome mismatch. The following section uses an awk to check that the variant IDs of the reference data have the same chromosome ID as the study data.  Merging the files via PLINK will only work for variants with perfectly matching attributes. For simplicity, and not crucial to the final task of inferring ancestory, we will ignore XY-encoded sex chromosomes (via sed -n '/^[XY]/!p').
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$2]=$1; next} \
     ($2 in a && a[$2] != $1)  {print a[$2],$2}' \
-    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim HapMapIII_CGRCh37.pruned.bim | \
-    sed -n '/^[XY]/!p' > HapMapIII_CGRCh37.toUpdateChr
+    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim | \
+    sed -n '/^[XY]/!p' > reference/HapMapIII_CGRCh38.toUpdateChr
 
-plink --bfile HapMapIII_CGRCh37.pruned \
-      --update-chr HapMapIII_CGRCh37.toUpdateChr 1 2 \
+plink --bfile reference/HapMapIII_CGRCh38.pruned \
+      --update-chr reference/HapMapIII_CGRCh38.toUpdateChr 1 2 \
       --make-bed \
-      --out HapMapIII_CGRCh37.updateChr
-mv $qcdir/$refname.updateChr.log $qcdir/plink_log/$refname.updateChr.log
+      --out reference/HapMapIII_CGRCh38.updateChr
 ```
 
+Position mismatch - Similar to the chromosome matching, we use an awk-script to find variants with mis-matching chromosomal positions
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$2]=$4; next} \
     ($2 in a && a[$2] != $4)  {print a[$2],$2}' \
-    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim HapMapIII_CGRCh37.pruned.bim > \
-    HapMapIII_CGRCh37.toUpdatePos
-    
+    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim > \
+    reference/HapMapIII_CGRCh38.toUpdatePos
+```
+
+Unlike chromosomal and base-pair annotation, mismatching allele-annotations will not only prevent the plink –merge, but also mean that it is likely that actually a different genotype was measured. Initially, we can use the following awk-script to check if non-matching allele codes are a simple case of allele flips.
+```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$1$2$4]=$5$6; next} \
     ($1$2$4 in a && a[$1$2$4] != $5$6 && a[$1$2$4] != $6$5)  {print $2}' \
-    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim HapMapIII_CGRCh37.pruned.bim > \
-    HapMapIII_CGRCh37.toFlip
-    
-plink --bfile HapMapIII_CGRCh37.updateChr \
-      --update-map HapMapIII_CGRCh37.toUpdatePos 1 2 \
-      --flip HapMapIII_CGRCh37.toFlip \
+    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim > \
+    reference/HapMapIII_CGRCh38.toFlip
+```
+We use plink to update the mismatching positions and possible allele-flips identified above.
+Any alleles that do not match after allele flipping, are identified and removed from the reference dataset.
+```
+plink --bfile reference/HapMapIII_CGRCh38.updateChr \
+      --update-map reference/HapMapIII_CGRCh38.toUpdatePos 1 2 \
+      --flip reference/HapMapIII_CGRCh38.toFlip \
       --make-bed \
-      --out HapMapIII_CGRCh37.flipped
-mv $qcdir/$refname.flipped.log $qcdir/plink_log/$refname.flipped.log
-```
+      --out reference/HapMapIII_CGRCh38.flipped
 
-```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$1$2$4]=$5$6; next} \
     ($1$2$4 in a && a[$1$2$4] != $5$6 && a[$1$2$4] != $6$5) {print $2}' \
-     Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim HapMapIII_CGRCh37.flipped.bim > \
-    HapMapIII_CGRCh37.mismatch
+     Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh37.flipped.bim > \
+     reference/HapMapIII_CGRCh37.mismatch
 
-plink --bfile HapMapIII_CGRCh37.flipped \
-      --exclude HapMapIII_CGRCh37.mismatch \
+plink --bfile reference/HapMapIII_CGRCh37.flipped \
+      --exclude reference/HapMapIII_CGRCh37.mismatch \
       --make-bed \
-      --out HapMapIII_CGRCh37.clean
-mv $qcdir/$refname.clean.log $qcdir/plink_log/$refname.clean.log
+      --out reference/HapMapIII_CGRCh37.clean
 ```
-merge
+
+Merge study genotypes and reference data
+The matching study and reference dataset can now be merged into a combined dataset with plink –bmerge. If all steps outlined above were conducted successfully, no mismatch errors should occur.
 ```
+# Merge 
 plink --bfile Filtered_n598_CWOW.no_ac_gt_snps.pruned  \
-      --bmerge HapMapIII_CGRCh37.clean.bed HapMapIII_CGRCh37.clean.bim \
-         HapMapIII_CGRCh37.clean.fam  \
+      --bmerge reference/HapMapIII_CGRCh37.clean.bed reference/HapMapIII_CGRCh37.clean.bim reference/HapMapIII_CGRCh37.clean.fam  \
       --make-bed \
       --out merge_HAP_CWOW
-mv $qcdir/$name.merge.$refname.log $qcdir/plink_log
 
+# PCA with merged hapmap and CWOW data 
 plink --bfile merge_HAP_CWOW \
       --pca \
       --out merge_HAP_CWOW_pca
-mv $qcdir/$name.$reference.log $qcdir/plink_log
 ```
+We can now use the merge_HAP_CWOW_pca.eigenvec file to estimate the ancestry of the CWOW study samples. Identifying individuals of divergent ancestry is implemented in check_ancestry in the R script described below. 
 
-
+#### Per individual plink QC checks 
 The R script 02_PLINK_QC.Rmd will run the PlinkQC protocol which will implement  three main functions:
 1) The per-individual quality control (perIndividualQC)
 2) The per-marker quality control (perMarkerQC)
@@ -214,7 +209,7 @@ The R script 02_PLINK_QC.Rmd will run the PlinkQC protocol which will implement 
 
 The script will output a clean dataset after removing outlier samples and markers.
 ```
-R 02_PLINK_population_PCA.Rmd
+R 02_PLINK_QC.Rmd
 ```
 An overview of the results may be viewed here: https://rpubs.com/olneykimberly/PlinkQC_LBD_CWOW_SNP_array 
 
