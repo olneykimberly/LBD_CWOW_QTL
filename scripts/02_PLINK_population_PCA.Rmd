@@ -23,7 +23,7 @@ metadata <- read.delim("../metadata/filtered_metadata.txt")
 plink --bfile n598_qc_data --pca --out n598_pca
 ```{r plink_pca}
 # Read the PCA data
-pca_data <- fread("../snp_array/n598_pca.eigenvec")
+pca_data <- fread("../snp_array/Filtered_n598_CWOW_pca_results.eigenvec")
 colnames(pca_data) <- c("FID", "IID", paste0("PC", 1:(ncol(pca_data)-2)))
 
 # Merge the PCA data with population information

@@ -33,7 +33,6 @@ snp_gene_info <- merge(me, gene_info, by = "gene")
 genotype_data$SNP <- genotype_data$V1 
 genotype_data$V1 <- NULL
 
-help(melt)
 geno <- melt(genotype_data, id.vars = "SNP")
 ```
 

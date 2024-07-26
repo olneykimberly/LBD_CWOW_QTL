@@ -19,15 +19,6 @@ library(ggplot2)
 library(qqman)
 ```
 
-# Read Omni SNP annotation and bed file 
-```{r omni}
-omni_bed <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.bed", skip = 1, header = FALSE) # Skip the first line 
-table(omni_bed$V1)
-
-snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated.txt", header = TRUE,  fill=TRUE)
-snp_anno$gene <- sub(",.*", "", snp_anno$`Gene(s)`) # create a gene column 
-snp_anno$SNP <- snp_anno$Name # create a SNP column for downstream matching 
-```
 
 # Read in CWOW metadata 
 ```{r CWOW}
@@ -108,15 +99,7 @@ LB <- covariates[, c(1:2,17)]
 write.table(LB, "../snp_array/CingLB_phenotypes.txt", row.names = FALSE, quote = FALSE, sep = "\t")
 ```
 
-# GWAS by Braak
 ```{r}
-gwas <- fread("../snp_array/n598_gwas_Thal.assoc.linear")
-```
-
-```{r}
-gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-sig <- subset(gwas_snp, P < 0.001)
-subset(gwas_snp, gene == "CLU")
 ```
 
 
