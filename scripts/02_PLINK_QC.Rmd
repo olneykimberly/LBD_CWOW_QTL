@@ -51,7 +51,7 @@ name <- 'Filtered_n598_CWOW'
 PerIndividualQC writes a list of all fail individual IDs to the qcdir. These IDs will be removed in the computation of the perMarkerQC
 
 The HapMapIII and CWOW data were merged prior to running plinkQC. See the README for more information on how the HapMapIII reference data was obtained.
-```{r individual_qc, eval=FALSE}
+```{r individual_qc, eval=TRUE}
 prefixMergedDataset <- c("merge_HAP_CWOW_pca") 
 
 fail_individuals <- perIndividualQC(indir=indir, 
@@ -212,6 +212,27 @@ fail_maf <- check_maf(indir=indir,
                       axis_title_size = 10,
                       title_size = 12)
 ggsave("../results/plinkQC_plots/maf.pdf", width = 4.5, height=5.5)
+```
+
+# Output cleaned data 
+```{r clean}
+# Overview of failed markers
+fail_markers <- perMarkerQC(indir=indir, 
+                            qcdir="../snp_array", 
+                            name=name,
+                            path2plink=path2plink,
+                            verbose=TRUE, 
+                            interactive=TRUE,
+                            showPlinkOutput=FALSE)
+
+help(cleanData)
+# Output cleaned data
+Ids  <- cleanData(indir=indir, 
+                  qcdir="../snp_array", 
+                  name=name, 
+                  path2plink=path2plink,
+                  verbose=TRUE, 
+                  showPlinkOutput=FALSE)
 ```
 
 

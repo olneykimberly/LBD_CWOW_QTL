@@ -16,14 +16,22 @@ knitr::opts_knit$set(root.dir = ".")
 library(dplyr)
 library(data.table)
 library(edgeR)
+library(GenomicFeatures)
+library(DGEobj.utils)
+library(sva)
+saveToPDF <- function(...) {
+  d = dev.copy(pdf, ...)
+  dev.off(d)
+}
+
 # Read in metadata filtered metadata file 
-metadata <- read.delim("../metadata/filtered_metadata.txt")
+metadata <- read.delim("../metadata/n579_metadata.txt")
 ```
 
 # Genotype data set up 
 ```{r genotype, eval=FALSE}
 # Read the raw genotype file
-genotype_raw <- fread("../snp_array/Filtered_n598_CWOW_genotype.raw")
+genotype_raw <- fread("../snp_array/Filtered_n579_CWOW.clean_genotype.raw")
 rownames(genotype_raw) <- genotype_raw$IID
 
 # Remove the first six columns (FID, IID, PAT, MAT, SEX, PHENOTYPE)
@@ -34,26 +42,109 @@ genotype_data <- t(genotype_data)
 colnames(genotype_data) <- genotype_raw$IID
 
 # Save the formatted data to a file
-write.table(genotype_data, file = "../snp_array/Filtered_n598_CWOW_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
+write.table(genotype_data, file = "../snp_array/Filtered_n579_CWOW_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
 ```
+
+# Gene length
+Obtain gene length for converting the raw counts to TPM values
+```{r gene_length}
+pathToRef = c("/research/labs/neurology/fryer/projects/references/human/")
+# read in GTF
+txdb <- makeTxDbFromGFF("/research/labs/neurology/fryer/projects/references/human/gencode.v38.annotation.gtf",format="gtf")
+# then collect the exons per gene id
+exons.list.per.gene <- exonsBy(txdb,by="gene")
+# then for each gene, reduce all the exons to a set of non overlapping exons, calculate their lengths (widths) and sum then
+exonic.gene.sizes <- sum(width(reduce(exons.list.per.gene)))
+
+# Save as dataframe
+exonic_length <- as.data.frame(exonic.gene.sizes)
+exonic_length$gene_id <- rownames(exonic_length) # add gene_id as column 
+
+# Obtain gene information that was used in the bulk RNAseq 
+genes <- fread("../RNA_counts/genes_filtered.txt")
+# Add exon length information to the RNA gene information 
+genes_with_exonic_length <- merge(genes, exonic_length, by = "gene_id")
+```
+
 
 # Counts data set up  
 ```{r counts}
+# Obtain counts data
 counts <- fread("../RNA_counts/counts_filtered.txt")
-genes <- fread("../RNA_counts/genes_filtered.txt")
+# Ensure counts is a data.table
+counts <- as.data.table(counts)
+rownames(counts) <- counts$V1 # add gene_id as rownames 
 
-y <- DGEList(counts=counts,genes=data.frame(Length=genes$width))
-y <- calcNormFactors(y)
-RPKM <- rpkm(y)
+# Get the column names to keep
+cols_to_keep <- colnames(counts) %in% metadata$NPID
 
-# Subset the dataframe
-counts_filtered <- RPKM[, metadata$NPID, drop = FALSE]
-rownames(counts_filtered) <- genes$gene_name
+# Subset counts to keep only those columns
+filtered_counts <- counts[, ..cols_to_keep]
+rownames(filtered_counts) <- counts$V1 # add gene_id to the filtered_counts
 
 # Create a named vector for matching
 matching_vector <- setNames(metadata$IID, metadata$NPID)
 # Replace the column names in counts_filtered
-colnames(counts_filtered) <- matching_vector[colnames(counts_filtered)]
+colnames(filtered_counts) <- matching_vector[colnames(filtered_counts)]
 
-write.table(counts_filtered, "../RNA_counts/n598_counts_filtered.txt", sep = "\t", quote = FALSE)
+# save as matrix 
+counts_matrix <- as.matrix(filtered_counts)
+rownames(counts_matrix) <- rownames(filtered_counts) # add gene_id as rownames
+```
+
+# Combat_seq batch correction 
+```{r combat}
+# Adjust the counts to correct for batch 
+# Preserve the condition: Control, PA, AD, LBD,
+adjusted <- ComBat_seq(counts_matrix, batch=metadata$batch, group=metadata$TYPE)
+```
+# Compare raw and adjusted counts
+```{r}
+lcpm <- edgeR::cpm(counts_matrix, log = TRUE)
+ladjusted <- edgeR::cpm(adjusted, log = TRUE)
+
+lcpm_df <- as.data.frame(lcpm)
+lcpm_df$gene_id <- rownames(lcpm_df)
+ladjusted_df <- as.data.frame(ladjusted)
+ladjusted_df$gene_id <- rownames(ladjusted_df)
+
+# Number of samples
+num_samples <- ncol(counts_matrix)
+
+# Loop through each sample
+for (i in 1:num_samples) {
+  # Extract CPM values for the sample
+  lcpm_sample <- lcpm_df[, i]
+  ladjusted_sample <- ladjusted_df[, i]
+  
+  # Calculate correlation coefficient
+  corr_value <- round(cor(lcpm_sample, ladjusted_sample), 2)
+  
+  # Create a plot
+  plot_title <- paste("Sample", colnames(lcpm_df)[i], "\nCorrelation:", corr_value)
+  p <- ggplot(data = data.frame(lcpm_sample = lcpm_sample, ladjusted_sample = ladjusted_sample), aes(x = lcpm_sample, y = ladjusted_sample)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(title = plot_title, x = "Log2 CPM (Original)", y = "Log2 CPM (Adjusted)") +
+    theme_minimal()
+  plot(p)
+  # Save the plot
+  saveToPDF(paste0("../results/combat/", colnames(lcpm_df)[i],".pdf"), width = 4, height = 4)
+
+}
+dev.off()
+```
+
+
+# Counts data set up  
+```{r TPM_counts}
+# Convert counts to TPM 
+TPM_counts <- convertCounts(
+  adjusted, # or counts_matrix (raw) or adjusted for combat batch adjusted counts 
+  unit = "TPM",
+  genes_with_exonic_length$exonic.gene.sizes,
+  log = FALSE
+)
+
+write.table(TPM_counts, "../RNA_counts/n579_TPM_combat_adjusted_counts.txt", sep = "\t", quote = FALSE)
 ```

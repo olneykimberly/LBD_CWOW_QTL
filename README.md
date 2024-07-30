@@ -70,6 +70,7 @@ plink --file hapmap3_r2_b36_fwd.consensus.qc.poly --make-bed --out HapMapIII_NCB
 Hapmap chromosome data is encoded numerically, with chrX represented by chr23, and chrY as chr24. In order to match to data encoded by chrX and chrY, we will have to rename these hapmap chromosomes. 
 Be sure to be in the snp_array/reference folder 
 ```
+# Assumes your in the snp_array/reference folder 
 awk '{print "chr" $1, $4 -1, $4, $2 }' HapMapIII_NCBI36.bim | sed 's/chr23/chrX/' | sed 's/chr24/chrY/' > HapMapIII_NCBI36.tolift
 ```
 
@@ -96,7 +97,7 @@ awk '{print $4}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.snps
 awk '{print $4, $3}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.pos
 
 # update the hapmap reference by extracting the mappable variants from the old build and update their position. 
-plink --bfile HapMapIII_NCBI36 --extract HapMapIII_CGRCh38.snps --update-map HapMapIII_CGRCh38.pos --make-bed --out HapMapIII_CGRCh38
+plink --bfile HapMapIII_NCBI36 --extract HapMapIII_CGRCh38.snps --update-map HapMapIII_CGRCh38.pos --make-bed --out HapMapIII_CGRCh38logs
 ```
 After the above steps, the HapMap III dataset can be used for inferring study ancestry as described below. 
 
@@ -111,8 +112,8 @@ awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == 
 plink --bfile  Filtered_n598_CWOW --exclude Filtered_n598_CWOW.ac_gt_snps --make-bed --out Filtered_n598_CWOW.no_ac_gt_snps
       
 # Filter hapmap data and create bed file 
-awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA")  {print $2}' reference/HapMapIII_CGRCh38.bim > HapMapIII_CGRCh38.ac_gt_snps
-plink --bfile  reference/HapMapIII_CGRCh38 --exclude HapMapIII_CGRCh38.bim.ac_gt_snps --make-bed --out HapMapIII_CGRCh38.ac_gt_snps.no_ac_gt_snps
+awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA")  {print $2}' reference/HapMapIII_CGRCh38.bim > reference/HapMapIII_CGRCh38.ac_gt_snps
+plink --bfile  reference/HapMapIII_CGRCh38 --exclude reference/HapMapIII_CGRCh38.ac_gt_snps --make-bed --out reference/HapMapIII_CGRCh38.ac_gt_snps.no_ac_gt_snps
 ```
 
 #### Prune
@@ -176,13 +177,13 @@ plink --bfile reference/HapMapIII_CGRCh38.updateChr \
 
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$1$2$4]=$5$6; next} \
     ($1$2$4 in a && a[$1$2$4] != $5$6 && a[$1$2$4] != $6$5) {print $2}' \
-     Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh37.flipped.bim > \
-     reference/HapMapIII_CGRCh37.mismatch
+     Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.flipped.bim > \
+     reference/HapMapIII_CGRCh38.mismatch
 
-plink --bfile reference/HapMapIII_CGRCh37.flipped \
-      --exclude reference/HapMapIII_CGRCh37.mismatch \
+plink --bfile reference/HapMapIII_CGRCh38.flipped \
+      --exclude reference/HapMapIII_CGRCh38.mismatch \
       --make-bed \
-      --out reference/HapMapIII_CGRCh37.clean
+      --out reference/HapMapIII_CGRCh38.clean
 ```
 
 Merge study genotypes and reference data
@@ -190,7 +191,7 @@ The matching study and reference dataset can now be merged into a combined datas
 ```
 # Merge 
 plink --bfile Filtered_n598_CWOW.no_ac_gt_snps.pruned  \
-      --bmerge reference/HapMapIII_CGRCh37.clean.bed reference/HapMapIII_CGRCh37.clean.bim reference/HapMapIII_CGRCh37.clean.fam  \
+      --bmerge reference/HapMapIII_CGRCh38.clean.bed reference/HapMapIII_CGRCh38.clean.bim reference/HapMapIII_CGRCh38.clean.fam  \
       --make-bed \
       --out merge_HAP_CWOW
 
@@ -200,7 +201,11 @@ plink --bfile merge_HAP_CWOW \
       --out merge_HAP_CWOW_pca
 ```
 We can now use the merge_HAP_CWOW_pca.eigenvec file to estimate the ancestry of the CWOW study samples. Identifying individuals of divergent ancestry is implemented in check_ancestry in the R script described below. 
-
+Before proceeding, clean up the snp_array folder by moving all of the log files to the plink_logs folder
+```
+mkdir plink_logs
+mv *log plink_logs
+```
 #### Per individual plink QC checks 
 The R script 02_PLINK_QC.Rmd will run the PlinkQC protocol which will implement  three main functions:
 1) The per-individual quality control (perIndividualQC)
@@ -209,13 +214,38 @@ The R script 02_PLINK_QC.Rmd will run the PlinkQC protocol which will implement 
 
 The script will output a clean dataset after removing outlier samples and markers.
 ```
+# move to the scripts folder
+cd ../scripts
 R 02_PLINK_QC.Rmd
 ```
 An overview of the results may be viewed here: https://rpubs.com/olneykimberly/PlinkQC_LBD_CWOW_SNP_array 
+The output is cleaned data that removed individuals and markers that didn't pass the quality control checks as described in the 02_PLINK_QC.Rmd 
 
+There are now 579 individuals that passed QC and 616,183 SNPs. Lets rename the files to reflect that there are now only 579 individuals. 
+```
+cd ../snp_array
+mv Filtered_n598_CWOW.clean.hh  Filtered_n579_CWOW.clean.hh
+mv Filtered_n598_CWOW.clean.bed Filtered_n579_CWOW.clean.bed
+mv Filtered_n598_CWOW.clean.fam Filtered_n579_CWOW.clean.fam
+mv Filtered_n598_CWOW.clean.bim Filtered_n579_CWOW.clean.bim
+```
+
+### Step 4: Create PCA with the filtered CWOW data
+Create PCA and update metadata file to reflect that there are now 579 individuals 
+```
+# PCA 
+plink --bfile ../snp_array/Filtered_n579_CWOW.clean --pca 20 --out ../snp_array/Filtered_n579_CWOW_pca_results
+
+# update metadata
+R 03_update_meta.Rmd
+```
 ### Step 5: Create genotype file
-Convert PLINK files 
 ```
-plink --bfile Filtered_n598_CWOW --recodeA --out Filtered_n598_CWOW_genotype    
+plink --bfile Filtered_n579_CWOW.clean --recodeA --out Filtered_n579_CWOW.clean_genotype    
 ```
+### Step 6: Update metadata file, counts data, and genotype file 
+```
+R 04_process_genotype.Rmd
+```
+
 

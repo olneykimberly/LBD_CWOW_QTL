@@ -41,6 +41,8 @@ ggplot(merged_data, aes(x=PC1, y=PC2, color=Race)) +
   theme_minimal() +
   geom_text(aes(label = NPID), vjust = -0.5, hjust = 0.5, size = 3, show.legend = FALSE) +
   guides(color = guide_legend(title = "Reported race"))
+ggsave("../results/pca/CWOW_pca_dim1&2.pdf", width = 6.5, height = 5)
+
 
 
 ggplot(merged_data, aes(x=PC2, y=PC3, color=Race)) +
@@ -51,4 +53,5 @@ ggplot(merged_data, aes(x=PC2, y=PC3, color=Race)) +
   theme_minimal()  +
   geom_text(aes(label = NPID), vjust = -0.5, hjust = 0.5, size = 3, show.legend = FALSE) +
   guides(color = guide_legend(title = "Reported race"))
+ggsave("../results/pca/CWOW_pca_dim2&3.pdf", width = 6.5, height = 5)
 ```

@@ -1,7 +1,7 @@
 ---
-title: "Check SNP array"
+title: "plot GWAS"
 author: "Kimberly Olney, Ph.D."
-date: "07/23/2024"
+date: "07/30/2024"
 output:
   html_document:
     df_print: paged
@@ -17,6 +17,12 @@ library(data.table)
 library(MatrixEQTL)
 library(ggplot2)
 library(qqman)
+library(ggmanh)
+
+saveToPDF <- function(...) {
+  d = dev.copy(pdf, ...)
+  dev.off(d)
+}
 ```
 
 # Read Omni SNP annotation and bed file 
@@ -30,18 +36,56 @@ snp_anno$SNP <- snp_anno$Name # create a SNP column for downstream matching
 ```
 
 # GWAS 
-```{r}
-gwas <- fread("../snp_array/braak_gwas_results.qassoc")
-```
+```{r read_gwas_results}
+# Read in GWAS file 
+gwas <- fread("../snp_array/cingLBD_association.assoc.linear")
 
-```{r}
+# Combine with snp annotation file and reformat 
 gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-sig <- subset(gwas_snp, P < 0.001)
-unique(sig$gene)
-subset(gwas_snp, gene == "MAPT")
+# Filter out chromosomes 0 and 25
+gwas_snp <- gwas_snp[gwas_snp$CHR != 0 & gwas_snp$CHR != 25, ]
+
+# Convert chromosome labels to numeric values for plotting
+# Use 23 for X, 24 for Y, and 25 for MT
+gwas_snp$CHR[gwas_snp$CHR == "X"] <- 23
+gwas_snp$CHR[gwas_snp$CHR == "Y"] <- 24
+gwas_snp$CHR <- as.numeric(gwas_snp$CHR)
+
+# Define chromosome labels for the plot
+chr_labels <- c(1:22, "X", "Y")
+```
+
+# ggmanh
+```{r}
+gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
+gwas_snp$CHR[gwas_snp$CHR == 24] <- "Y"
+gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
+chr_colors <- c("navyblue", "skyblue2")
+
+gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
+
+g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Cingulate Lewy body count", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
+g
+saveToPDF("../results/gwas/manhattan_plot_Cingulate_LB_count.pdf", width = 8, height = 4.5)
 ```
 
 
+# Manhattan
+```{r manhattan_default}
+# Manhattan plot and show significant SNPs
+sig <- subset(gwas_snp, P < 0.00001)
+snpsOfInterest <- sig$SNP
+manhattan(gwas_snp, highlight = snpsOfInterest)
 
 
+# Show only chromosome 19 
+manhattan(subset(gwas_snp, CHR == 19), main = "Chr 19")
+# Show only X chromosome
+manhattan(subset(gwas_snp, CHR == 23), main = "Chr X")
+```
 
+# QQplot
+```{r qqplot_pvalue}
+qq(gwas_snp$P, main = "Q-Q plot of GWAS p-values", xlim = c(0, 7), ylim = c(0,
+    12), pch = 18, col = "blue4", cex = 1.5, las = 1)
+```

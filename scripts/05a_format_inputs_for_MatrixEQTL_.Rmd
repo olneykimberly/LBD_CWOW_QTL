@@ -1,0 +1,98 @@
+---
+title: "Format inputs for Matrix eQTL"
+author: "Kimberly Olney, Ph.D."
+date: "07/30/2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+params:
+  args: myarg
+---
+
+# Setup
+```{r setup}
+knitr::opts_knit$set(root.dir = ".")
+library(dplyr)
+library(data.table)
+library(MatrixEQTL)
+library(tidyverse)
+```
+
+# Expression data 
+```{r expression_data}
+expression_data <- fread("../RNA_counts/n579_TPM_combat_adjusted_counts.txt")
+# Set the row names using the first column and remove it from the data frame
+rownames(expression_data) <- expression_data$V1
+expression_data$V1 <- NULL
+```
+
+# Covariates 
+```{r covariates_data}
+covar <- read.delim("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes.txt")
+meta <- read.delim("../metadata/n579_metadata.txt")
+
+meta <- meta[, c(1, 44)] # RIN 
+df  <- merge(covar, meta, by = "IID") # combine covariates and metadata so that RIN is now included
+
+# Remove FID and pheno column 
+df$FID <- NULL
+df$Pheno <- NULL
+
+# Next we need the sample IDs (aka the IIDs) to be the columns and the rows to be the covariates
+# This section reformats the data frame 
+
+# Convert all columns except IID to character
+df_converted <- df %>%
+  mutate(across(-IID, as.character))
+
+# Pivot the data frame
+df_long <- df_converted %>%
+  pivot_longer(cols = -IID, names_to = "Variable", values_to = "Value")
+
+# Pivot to wide format
+df_wide <- df_long %>%
+  pivot_wider(names_from = IID, values_from = Value)
+
+# Get the column names expression data 
+column_order <- colnames(expression_data)
+
+# Reorder covariates table based on column order from the expression data
+# This is to ensure that the sample IDs are in the same order in the expression data and covariates tables 
+df1_reordered <- df_wide[, column_order]
+covars <- cbind(df_wide$Variable, df1_reordered)
+names(covars)[1] <- "variable"
+
+# Output the table 
+write.table(covars, "../snp_array/covariates_and_phenotype_files/covariates.txt", 
+            quote = FALSE, sep = "\t", row.names = FALSE)
+```
+
+# SNP and gene information 
+```{r SNP_and_gene_data}
+# Read in gene information. These are the genes used in the bulk RNAseq differential expression analysis.
+genes <- fread("../RNA_counts/genes_filtered.txt")
+gene_info <- genes[,c(1:4)] # Keep only columns 1 - 4
+colnames(gene_info) <- c("geneid","chr", "left", "right") # Rename the columns 
+
+# Read in SNP annotation
+# The SNP annotation was download from the illumina website 
+snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated.txt", 
+                  header = TRUE,  fill = TRUE)
+snp_anno$gene <- sub(",.*", "", snp_anno$`Gene(s)`) # create a gene column 
+snp_anno <- snp_anno[,c(1:3)] # Keep only columns 1 - 3
+colnames(snp_anno) <- c("snpid","chr", "pos") # rename the columns 
+
+# Read in the genotype file. A zero indicates the individual is homozygous reference, a 1 is heterozygous, a 2 is homozygous alternate 
+CWOW_snps <- fread("../snp_array/Filtered_n579_CWOW_genotype_data.txt") 
+CWOW_snps$V1 <- sub("_.*", "", CWOW_snps$V1) # remove the allele information in the snpid 
+rownames(CWOW_snps)  <- CWOW_snps$V1 # set as rownames 
+CWOW_snps$V1 <- NULL # remove the column containing the snpids
+snp_ids <- rownames(CWOW_snps) # create a vector of the snpids to add as rownames 
+colnames(CWOW_snps) # inspect column names 
+CWOW_snps_reordered <- CWOW_snps[, ..column_order] # reorder to match the order of the expression data and covariates table
+rownames(CWOW_snps_reordered) <- snp_ids # add snpid as rownames 
+
+# Save the formatted data to a file
+write.table(CWOW_snps_reordered, file = "../snp_array/Filtered_n579_CWOW_genotype_data_no_allele_info.txt", sep = " ", quote = FALSE, col.names = NA)
+```
