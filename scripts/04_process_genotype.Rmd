@@ -147,4 +147,15 @@ TPM_counts <- convertCounts(
 )
 
 write.table(TPM_counts, "../RNA_counts/n579_TPM_combat_adjusted_counts.txt", sep = "\t", quote = FALSE)
+
+# Convert counts to TPM 
+TPM_counts <- convertCounts(
+  counts_matrix, # or counts_matrix (raw) or adjusted for combat batch adjusted counts 
+  unit = "TPM",
+  genes_with_exonic_length$exonic.gene.sizes,
+  log = FALSE
+)
+
+write.table(TPM_counts, "../RNA_counts/n579_TPM_counts.txt", sep = "\t", quote = FALSE)
+```
 ```

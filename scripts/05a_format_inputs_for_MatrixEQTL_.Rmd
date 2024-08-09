@@ -31,9 +31,21 @@ expression_data$V1 <- NULL
 ```{r covariates_data}
 covar <- read.delim("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes.txt")
 meta <- read.delim("../metadata/n579_metadata.txt")
+meta$disease_status <- ifelse(meta$TYPE == "AD", 2, 
+                              ifelse(meta$TYPE == "LBD", 2, 1))
+# Assume 'batch' is a factor variable representing batch IDs
+batch <- factor(meta$flowcell_and_lane)  
 
-meta <- meta[, c(1, 44)] # RIN 
-df  <- merge(covar, meta, by = "IID") # combine covariates and metadata so that RIN is now included
+# Create the model matrix for the batch variable
+batch_matrix <- model.matrix(~ batch - 1)
+# Convert to a data frame or matrix as needed
+batch_matrix <- as.data.frame(batch_matrix)
+# Include these columns in your covariate matrix for MatrixEQTL
+meta$batch <- batch_matrix
+
+meta <- meta[, c(1, 44, 54)] # RIn 44, disease status 61, batch 52-59
+meta_df <- cbind(batch_matrix, meta)
+df  <- merge(covar, meta_df, by = "IID") # combine covariates and metadata so that RIN is now included
 
 # Remove FID and pheno column 
 df$FID <- NULL
@@ -60,11 +72,17 @@ column_order <- colnames(expression_data)
 # Reorder covariates table based on column order from the expression data
 # This is to ensure that the sample IDs are in the same order in the expression data and covariates tables 
 df1_reordered <- df_wide[, column_order]
-covars <- cbind(df_wide$Variable, df1_reordered)
+data_numeric <- data.frame(lapply(df1_reordered, function(x) {
+  # Try to convert to numeric, suppress warnings
+  as.numeric(as.character(x))
+}))
+
+covars <- cbind(df_wide$Variable, data_numeric)
 names(covars)[1] <- "variable"
 
+
 # Output the table 
-write.table(covars, "../snp_array/covariates_and_phenotype_files/covariates.txt", 
+write.table(covars, "../snp_array/covariates_and_phenotype_files/covariates_with_disease_status_batch.txt", 
             quote = FALSE, sep = "\t", row.names = FALSE)
 ```
 
