@@ -21,6 +21,7 @@ conda env create -n QTL --file QTL.yml
 
 ```
 
+# Clean up genotype data, run GWAS and eQTL
 ### Step 1: Match RNAseq samples to samples with SNP array data 
 The output will be a filtered metadata that contains the information on the individuals that have both bulk RNAseq expression data and SNP array data. 
 ```
@@ -247,5 +248,41 @@ plink --bfile Filtered_n579_CWOW.clean --recodeA --out Filtered_n579_CWOW.clean_
 ```
 R 04_process_genotype.Rmd
 ```
+### Step 7: Run Matrix eQTL 
+Firstly, the files will need some additional formating. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
+```
+# Format the inputs 
+R 05a_format_inputs_for_MatrixEQTL.Rmd
+# Run matrix eQTL, note that it takes several hours to run. Submit as a background job. 
+R 05b_run_MatrixEQTL.Rmd
+```
+### Step 8: Plot the eQTL and GWAS results 
+```
+# eQTL plots for top SNP to gene associations
+R 06_plot_eQTLs.Rmd
+# Manhattan plots from GWAS 
+R 07_GWAS.Rmd
+```
 
+# Impute genotypes
+The above was completed for the clean unimputed genotypes. Now that we have clean genotypes from unrelated individuals, we will impute genotypes following the TOPMed impute protocol. https://topmedimpute.readthedocs.io/en/latest/prepare-your-data/
 
+If you use the Imputation TOPMed Server, cite:
+Das S, Forer L, Schönherr S, Sidore C, Locke AE, Kwong A, Vrieze S, Chew EY, Levy S, McGue M, Schlessinger D, Stambolian D, Loh PR, Iacono WG, Swaroop A, Scott LJ, Cucca F, Kronenberg F, Boehnke M, Abecasis GR, Fuchsberger C. Next-generation genotype imputation service and methods. Nature Genetics 48, 1284–1287 (2016).
+
+### Register and install packages
+```
+wget http://www.well.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.2.7.zip
+wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+```
+
+### Generate VCF files from plink files
+TOPMed Imputation Server accepts VCF files compressed with bgzip
+
+```
+# create a frequency file
+plink --freq --bfile Filtered_n579_CWOW.clean --out Filtered_n579_CWOW.clean.frequency
+# Execute script
+perl HRC-1000G-check-bim.pl -b <bim file> -f <freq-file> -r HRC.r1-1.GRCh37.wgs.mac5.sites.tab -h
+sh Run-plink.sh
+```
