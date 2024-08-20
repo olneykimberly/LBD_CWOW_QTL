@@ -239,13 +239,15 @@ plink --bfile reference/HapMapIII_CGRCh38.flipped \
       --make-bed \
       --out reference/HapMapIII_CGRCh38.clean
 ```
-
+### Merge
 Merge study genotypes and reference data
 The matching study and reference dataset can now be merged into a combined dataset with plink –bmerge. If all steps outlined above were conducted successfully, no mismatch errors should occur.
 ```
 # Merge 
-plink --bfile Filtered_n598_CWOW.no_ac_gt_snps.pruned  \
-      --bmerge reference/HapMapIII_CGRCh38.clean.bed reference/HapMapIII_CGRCh38.clean.bim reference/HapMapIII_CGRCh38.clean.fam  \
+plink --bfile Filtered_n598_CWOW.no_ac_gt_snps.pruned \
+      --bmerge reference/HapMapIII_CGRCh38.clean.bed \
+               reference/HapMapIII_CGRCh38.clean.bim \
+               reference/HapMapIII_CGRCh38.clean.fam \
       --make-bed \
       --out merge_HAP_CWOW
 
@@ -314,7 +316,7 @@ R 05a_format_inputs_for_MatrixEQTL.Rmd
 R 05b_run_MatrixEQTL.Rmd
 ```
 
-### Step 8: Plot the eQTL and GWAS results 
+### Step 8: Plot the eQTL results 
 ```
 # eQTL plots for top SNP to gene associations
 R 06_plot_eQTLs.Rmd
@@ -323,7 +325,26 @@ R 06_plot_eQTLs.Rmd
 R 07_GWAS.Rmd
 ```
 
-# Impute genotypes
+## GWAS 
+Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. 
+```
+cd ../ # In the main project folder
+mkdir GWAS
+cd GWAS
+
+plink --bfile Filtered_n579_CWOW.clean
+      --linear
+      --out cingLBD_association
+      --pheno covariates_and_phenotype_files/CingLB_phenotypes.txt
+```
+
+Make Manhattan plots from GWAS association tests
+```
+# Manhattan plots from GWAS 
+R 07_GWAS.Rmd
+```
+
+## Impute genotypes
 The above was completed for the clean unimputed genotypes. Now that we have clean genotypes from unrelated individuals, we will impute genotypes following the TOPMed impute protocol. https://topmedimpute.readthedocs.io/en/latest/prepare-your-data/
 
 If you use the Imputation TOPMed Server, cite:
