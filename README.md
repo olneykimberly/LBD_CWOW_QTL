@@ -73,6 +73,7 @@ Be sure to be in the snp_array/reference folder
 ```
 # Assumes your in the snp_array/reference folder 
 awk '{print "chr" $1, $4 -1, $4, $2 }' HapMapIII_NCBI36.bim | sed 's/chr23/chrX/' | sed 's/chr24/chrY/' > HapMapIII_NCBI36.tolift
+awk '{print "chr" $1, $4 -1, $4, $2 }' Filtered_n598_CWOW.bim | sed 's/chr23/chrX/' | sed 's/chr24/chrY/' > Filtered_n598_CWOW.tolift
 ```
 
 The genome build of HapMap III data is NCBI36. In order to update the HapMap III data to GRCh38, we use the UCSC liftOver tool. The liftOver tool takes information in a format similar to the PLINK .bim format, the UCSC bed format and a liftover chain, containing the mapping information between the old genome (target) and new genome (query). It returns the updated annotation and a file with unmappable variants. 
@@ -86,11 +87,14 @@ convert hg18 coordinates to hg38.
 ```
 # Download chain    
 wget http://hgdownload.cse.ucsc.edu/goldenpath/hg18/liftOver/hg18ToHg38.over.chain.gz
+wget https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
 # unzip 
 gunzip hg18ToHg38.over.chain.gz
+gunzip hg19ToHg38.over.chain.gz
  
 # liftOver tool had to be downloaded first, see: https://genome-store.ucsc.edu/products/
 liftOver HapMapIII_NCBI36.tolift hg18ToHg38.over.chain HapMapIII_CGRCh38 HapMapIII_NCBI36.unMapped
+liftOver Filtered_n598_CWOW.tolift reference/hg19ToHg38.over.chain CWOW_n598_CGRCh38 CWOW_n598_CGRCh38.unMapped
 
 # ectract mapped variants
 awk '{print $4}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.snps
@@ -99,8 +103,17 @@ awk '{print $4, $3}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.pos
 
 # update the hapmap reference by extracting the mappable variants from the old build and update their position. 
 plink --bfile HapMapIII_NCBI36 --extract HapMapIII_CGRCh38.snps --update-map HapMapIII_CGRCh38.pos --make-bed --out HapMapIII_CGRCh38logs
+
+## Repeat for CWOW data 
+# ectract mapped variants
+awk '{print $4}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.snps
+# ectract updated positions
+awk '{print $4, $3}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.pos
+
+# update the CWOW data by extracting the mappable variants from the old build and update their position. 
+plink --bfile Filtered_n598_CWOW --extract CWOW_n598_CGRCh38.snps --update-map CWOW_n598_CGRCh38.pos --make-bed --out CWOW_n598_CGRCh38_updated
 ```
-After the above steps, the HapMap III dataset can be used for inferring study ancestry as described below. 
+After the above steps, the HapMap III & CWOW dataset can be used for inferring study ancestry as described below. 
 
 #### Match CWOW genotypes with hapmap reference data
 In order to compute joint principal components of the reference hapmap and the CWOW study population, we’ll need to combine the two datasets. The plink –merge function enables this merge, but requires the variants in the datasets to be matching by chromosome, position and alleles. The following sections show how to extract the relevant data from the reference and study dataset and how to filter matching variants, as described here: https://meyer-lab-cshl.github.io/plinkQC/articles/AncestryCheck.html
@@ -225,24 +238,24 @@ The output is cleaned data that removed individuals and markers that didn't pass
 There are now 579 individuals that passed QC and 616,183 SNPs. Lets rename the files to reflect that there are now only 579 individuals. 
 ```
 cd ../snp_array
-mv Filtered_n598_CWOW.clean.hh  Filtered_n579_CWOW.clean.hh
-mv Filtered_n598_CWOW.clean.bed Filtered_n579_CWOW.clean.bed
-mv Filtered_n598_CWOW.clean.fam Filtered_n579_CWOW.clean.fam
-mv Filtered_n598_CWOW.clean.bim Filtered_n579_CWOW.clean.bim
+mv Filtered_n598_CWOW.clean.hh  Filtered_n580_CWOW.clean.hh
+mv Filtered_n598_CWOW.clean.bed Filtered_n580_CWOW.clean.bed
+mv Filtered_n598_CWOW.clean.fam Filtered_n580_CWOW.clean.fam
+mv Filtered_n598_CWOW.clean.bim Filtered_n580_CWOW.clean.bim
 ```
 
 ### Step 4: Create PCA with the filtered CWOW data
 Create PCA and update metadata file to reflect that there are now 579 individuals 
 ```
 # PCA 
-plink --bfile ../snp_array/Filtered_n579_CWOW.clean --pca 20 --out ../snp_array/Filtered_n579_CWOW_pca_results
+plink --bfile ../snp_array/Filtered_n580_CWOW.clean --pca 20 --out ../snp_array/Filtered_n579_CWOW_pca_results
 
 # update metadata
 R 03_update_meta.Rmd
 ```
 ### Step 5: Create genotype file
 ```
-plink --bfile Filtered_n579_CWOW.clean --recodeA --out Filtered_n579_CWOW.clean_genotype    
+plink --bfile Filtered_n580_CWOW.clean --recodeA --out Filtered_n580_CWOW.clean_genotype    
 ```
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
@@ -282,7 +295,13 @@ TOPMed Imputation Server accepts VCF files compressed with bgzip
 ```
 # create a frequency file
 plink --freq --bfile Filtered_n579_CWOW.clean --out Filtered_n579_CWOW.clean.frequency
-# Execute script
-perl HRC-1000G-check-bim.pl -b <bim file> -f <freq-file> -r HRC.r1-1.GRCh37.wgs.mac5.sites.tab -h
-sh Run-plink.sh
+# Create VCF
+plink --bfile Filtered_n579_CWOW.clean --recode vcf
+```
+
+
+TO add above
+```
+
+
 ```

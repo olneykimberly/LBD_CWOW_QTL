@@ -44,7 +44,7 @@ indir <- '../snp_array'
 # Output directory 
 qcdir <- '../snp_array/post_plinkQC'
 # Name of the SNP array input data 
-name <- 'Filtered_n598_CWOW' 
+name <- 'CWOW_n598_CGRCh38_updated' # CWOW_n598_CGRCh38_updated Filtered_n598_CWOW
 ```
 
 # Per-individual quality control
@@ -225,7 +225,6 @@ fail_markers <- perMarkerQC(indir=indir,
                             interactive=TRUE,
                             showPlinkOutput=FALSE)
 
-help(cleanData)
 # Output cleaned data
 Ids  <- cleanData(indir=indir, 
                   qcdir="../snp_array", 

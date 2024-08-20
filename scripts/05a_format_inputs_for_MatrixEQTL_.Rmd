@@ -21,18 +21,18 @@ library(tidyverse)
 
 # Expression data 
 ```{r expression_data}
-expression_data <- fread("../RNA_counts/n579_TPM_combat_adjusted_counts.txt")
+expression_data <- fread("../RNA_counts/n580_TPM_combat_adjusted_counts_log2.txt")
 # Set the row names using the first column and remove it from the data frame
 rownames(expression_data) <- expression_data$V1
 expression_data$V1 <- NULL
+column_order <- colnames(expression_data)
 ```
 
 # Covariates 
 ```{r covariates_data}
 covar <- read.delim("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes.txt")
-meta <- read.delim("../metadata/n579_metadata.txt")
-meta$disease_status <- ifelse(meta$TYPE == "AD", 2, 
-                              ifelse(meta$TYPE == "LBD", 2, 1))
+meta <- read.delim("../metadata/n580_metadata.txt")
+
 # Assume 'batch' is a factor variable representing batch IDs
 batch <- factor(meta$flowcell_and_lane)  
 
@@ -43,48 +43,121 @@ batch_matrix <- as.data.frame(batch_matrix)
 # Include these columns in your covariate matrix for MatrixEQTL
 meta$batch <- batch_matrix
 
-meta <- meta[, c(1, 44, 54)] # RIn 44, disease status 61, batch 52-59
-meta_df <- cbind(batch_matrix, meta)
-df  <- merge(covar, meta_df, by = "IID") # combine covariates and metadata so that RIN is now included
+
+table(meta$TYPE)
+meta <- meta[, c(1, 9, 44)] # RIn 44, disease status 61, batch 52-59
+#meta_df <- cbind(batch_matrix, meta)
+#df  <- merge(covar, meta_df, by = "IID") # combine covariates and metadata so that RIN is now included
+df  <- merge(covar, meta, by = "IID") # combine covariates and metadata so that RIN is now included
 
 # Remove FID and pheno column 
 df$FID <- NULL
 df$Pheno <- NULL
 
-# Next we need the sample IDs (aka the IIDs) to be the columns and the rows to be the covariates
-# This section reformats the data frame 
+# Further define the sample types by A-T-S status 
+df$TYPE.ATS <- ifelse(df$TYPE == "LBD" & df$Braak.NFT <= 3 & df$Thal.amyloid < 2, "LBD_S",
+                             ifelse(df$TYPE == "LBD" & df$Braak.NFT > 3 & df$Thal.amyloid >= 2, "LBD_ATS",
+                                    ifelse(df$TYPE == "LBD" & df$Braak.NFT <= 3 & df$Thal.amyloid >= 2, "LBD_AS", # high amyloid 
+                                      ifelse(df$TYPE == "AD", "AD",
+                                           ifelse(df$TYPE == "PA", "PA",
+                                                  ifelse(df$TYPE == "CONTROL", "CONTROL", "LBD_TS") # high Braak
+                                           )))))
 
-# Convert all columns except IID to character
-df_converted <- df %>%
-  mutate(across(-IID, as.character))
-
-# Pivot the data frame
-df_long <- df_converted %>%
-  pivot_longer(cols = -IID, names_to = "Variable", values_to = "Value")
-
-# Pivot to wide format
-df_wide <- df_long %>%
-  pivot_wider(names_from = IID, values_from = Value)
-
-# Get the column names expression data 
-column_order <- colnames(expression_data)
-
-# Reorder covariates table based on column order from the expression data
-# This is to ensure that the sample IDs are in the same order in the expression data and covariates tables 
-df1_reordered <- df_wide[, column_order]
-data_numeric <- data.frame(lapply(df1_reordered, function(x) {
-  # Try to convert to numeric, suppress warnings
-  as.numeric(as.character(x))
-}))
-
-covars <- cbind(df_wide$Variable, data_numeric)
-names(covars)[1] <- "variable"
-
-
-# Output the table 
-write.table(covars, "../snp_array/covariates_and_phenotype_files/covariates_with_disease_status_batch.txt", 
-            quote = FALSE, sep = "\t", row.names = FALSE)
+# check
+table(df$TYPE)
+table(df$TYPE.ATS)
+df$TYPE <- NULL
+df$TYPE.ATS <- factor(df$TYPE.ATS, levels=c("CONTROL", "PA", "AD", "LBD_S", "LBD_TS", "LBD_AS", "LBD_ATS"))
+table(df$TYPE.ATS) # inspect
 ```
+
+# Genotype data
+```{r genotype_data}
+# Read in the genotype file. A zero indicates the individual is homozygous reference, a 1 is heterozygous, a 2 is homozygous alternate 
+CWOW_snps <- fread("../snp_array/Filtered_n580_CWOW_genotype_data.txt") 
+CWOW_snps$V1 <- sub("_.*", "", CWOW_snps$V1) # remove the allele information in the snpid 
+rownames(CWOW_snps)  <- CWOW_snps$V1 # set as rownames 
+CWOW_snps$V1 <- NULL # remove the column containing the snpids
+snp_ids <- rownames(CWOW_snps) # create a vector of the snpids to add as rownames 
+# colnames(CWOW_snps) # inspect column names 
+rownames(CWOW_snps) <- snp_ids # add snpid as rownames 
+write.table(snp_ids, "../snp_array/snp_ids_GRCh38.txt", sep = "\t", quote = FALSE)
+```
+
+# Subset by disease type 
+```{r subset}
+# Next we need the sample IDs (aka the IIDs) to be the columns and the rows to be the covariates
+# This section reformats the data frame & subsets by disease type 
+snp_ids <- read.delim("../snp_array/snp_ids_GRCh38.txt")
+
+# Define  subsets
+subsets <- list(
+ # "LBD_control" = c("CONTROL", "LBD_S", "LBD_AS", "LBD_ATS", "LBD_TS"), # all LBD types
+  "AD_control" = c("CONTROL", "AD")
+#  "PA_control" = c("CONTROL", "PA"),
+#  "LBD_S_control" = c("CONTROL", "LBD_S"),
+ # "LBD_AS_control" = c("CONTROL", "LBD_AS"),
+#  "LBD_ATS_control" = c("CONTROL", "LBD_ATS")
+)
+
+# Iterate over each subset
+for (subset_name in names(subsets)) {
+  
+  # Subset the data based on disease type
+  df_subset <- df %>% 
+    filter(TYPE.ATS %in% subsets[[subset_name]])
+  
+  # Filter the expression data to include only IIDs present in the subset
+  expression_data_subset <- expression_data[, .SD, .SDcols = df_subset$IID]
+  # Write the output to a file
+  exp_output_file <- paste0("../RNA_counts/n580_TPM_combat_adjusted_counts_log2_", subset_name, ".txt")
+  write.table(expression_data_subset, exp_output_file, quote = FALSE, sep = "\t", row.names = TRUE)
+  column_order <- colnames(expression_data_subset)
+  
+  df_subset$Pheno <- ifelse(df_subset$TYPE.ATS == "CONTROL", 1, 2) # 1=unaffected (control), 2=affected (case)
+  df_subset$TYPE.ATS <- NULL
+  # Reformat the data 
+  df_converted <- df_subset %>%
+    mutate(across(-IID, as.character))
+  
+  df_long <- df_converted %>%
+    pivot_longer(cols = -IID, names_to = "Variable", values_to = "Value")
+  
+  df_wide <- df_long %>%
+    pivot_wider(names_from = IID, values_from = Value)
+  
+  # Reorder based on expression data
+  df1_reordered <- df_wide[, column_order]
+  
+  # Convert to numeric
+  data_numeric <- data.frame(lapply(df1_reordered, function(x) {
+    as.numeric(as.character(x))
+  }))
+  
+  # Combine covariates and phenotype data
+  covars <- cbind(df_wide$Variable, data_numeric)
+  
+  # Calculate variance for each row
+ row_var <- apply(covars[, -1], 1, var) # ignore the first column of the variables
+
+  # Filter out rows with zero variance
+  cvrt_filtered <- covars[row_var != 0, ]
+
+  # Check the filtered covariate matrix
+  apply(cvrt_filtered[, -1], 1, var)
+  names(cvrt_filtered)[1] <- "variable"
+  
+  # Write the output to a file
+  cov_output_file <- paste0("../snp_array/covariates_and_phenotype_files/covariates_", subset_name, ".txt")
+  write.table(cvrt_filtered, cov_output_file, quote = FALSE, sep = "\t", row.names = FALSE)
+  
+  CWOW_snps_reordered <- CWOW_snps[, ..column_order] # reorder to match the order of the expression data  
+  rownames(CWOW_snps_reordered) <- snp_ids$x
+  snp_output_file <- paste0("../snp_array/Filtered_n580_CWOW_genotype_data_", subset_name, ".txt")
+  write.table(CWOW_snps_reordered, snp_output_file, sep = " ", quote = FALSE)
+}
+```
+
 
 # SNP and gene information 
 ```{r SNP_and_gene_data}
@@ -98,19 +171,35 @@ colnames(gene_info) <- c("geneid","chr", "left", "right") # Rename the columns
 snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated.txt", 
                   header = TRUE,  fill = TRUE)
 snp_anno$gene <- sub(",.*", "", snp_anno$`Gene(s)`) # create a gene column 
-snp_anno <- snp_anno[,c(1:3)] # Keep only columns 1 - 3
-colnames(snp_anno) <- c("snpid","chr", "pos") # rename the columns 
-
-# Read in the genotype file. A zero indicates the individual is homozygous reference, a 1 is heterozygous, a 2 is homozygous alternate 
-CWOW_snps <- fread("../snp_array/Filtered_n579_CWOW_genotype_data.txt") 
-CWOW_snps$V1 <- sub("_.*", "", CWOW_snps$V1) # remove the allele information in the snpid 
-rownames(CWOW_snps)  <- CWOW_snps$V1 # set as rownames 
-CWOW_snps$V1 <- NULL # remove the column containing the snpids
-snp_ids <- rownames(CWOW_snps) # create a vector of the snpids to add as rownames 
-colnames(CWOW_snps) # inspect column names 
-CWOW_snps_reordered <- CWOW_snps[, ..column_order] # reorder to match the order of the expression data and covariates table
-rownames(CWOW_snps_reordered) <- snp_ids # add snpid as rownames 
-
-# Save the formatted data to a file
-write.table(CWOW_snps_reordered, file = "../snp_array/Filtered_n579_CWOW_genotype_data_no_allele_info.txt", sep = " ", quote = FALSE, col.names = NA)
+#snp_anno <- snp_anno[,c(1:3)] # Keep only columns 1 - 3
+#colnames(snp_anno) <- c("snpid","chr", "pos") # rename the columns 
 ```
+
+# Lift SNP annotation to GRCh38
+```{r lift_snp_annotation}
+library(rtracklayer)
+library(GenomicRanges)
+
+chain <- import.chain("../snp_array/reference/hg19ToHg38.over.chain")
+
+# Convert snp annotation to GRanges object
+gr <- GRanges(
+  seqnames = paste0("chr", snp_anno$Chr),
+  ranges = IRanges(start = snp_anno$MapInfo, end = snp_anno$MapInfo),
+  names = snp_anno$Name,
+  alleles = snp_anno$Alleles, 
+  Transcript = snp_anno$`Transcript(s)`, 
+  Gene = snp_anno$`Gene(s)`, 
+  In_exon = snp_anno$`In-exon`,
+  Mutation = snp_anno$`Mutation(s)`, 
+  gene = snp_anno$gene
+)
+
+lifted <- liftOver(gr, chain)
+lifted_gr <- unlist(lifted)
+
+GRCh38_snp_annotation <- as.data.frame(lifted_gr)
+write.table(GRCh38_snp_annotation,"../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated_liftover_GRCh38.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+

@@ -25,24 +25,25 @@ saveToPDF <- function(...) {
 }
 
 # Read in metadata filtered metadata file 
-metadata <- read.delim("../metadata/n579_metadata.txt")
+metadata <- read.delim("../metadata/n580_metadata.txt")
 ```
 
 # Genotype data set up 
 ```{r genotype, eval=FALSE}
 # Read the raw genotype file
-genotype_raw <- fread("../snp_array/Filtered_n579_CWOW.clean_genotype.raw")
+genotype_raw <- fread("../snp_array/Filtered_n580_CWOW.clean_genotype.raw")
 rownames(genotype_raw) <- genotype_raw$IID
 
 # Remove the first six columns (FID, IID, PAT, MAT, SEX, PHENOTYPE)
-genotype_data <- genotype_raw %>% select(-c(1:6))
+library(data.table)
+genotype_data <- genotype_raw[, -(1:6), with = FALSE]
 rownames(genotype_data) <- genotype_raw$IID
 # Transpose the data to get SNPs as rows and samples as columns
 genotype_data <- t(genotype_data)
 colnames(genotype_data) <- genotype_raw$IID
 
 # Save the formatted data to a file
-write.table(genotype_data, file = "../snp_array/Filtered_n579_CWOW_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
+write.table(genotype_data, file = "../snp_array/Filtered_n580_CWOW_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
 ```
 
 # Gene length
@@ -139,23 +140,24 @@ dev.off()
 # Counts data set up  
 ```{r TPM_counts}
 # Convert counts to TPM 
+adjusted[adjusted == 0] <- 1e-6 # replace zeros with small number 
 TPM_counts <- convertCounts(
   adjusted, # or counts_matrix (raw) or adjusted for combat batch adjusted counts 
   unit = "TPM",
   genes_with_exonic_length$exonic.gene.sizes,
-  log = FALSE
+  log = TRUE
 )
-
-write.table(TPM_counts, "../RNA_counts/n579_TPM_combat_adjusted_counts.txt", sep = "\t", quote = FALSE)
+write.table(TPM_counts, "../RNA_counts/n580_TPM_combat_adjusted_counts_log2.txt", sep = "\t", quote = FALSE)
 
 # Convert counts to TPM 
+counts_matrix[counts_matrix == 0] <- 1e-6 # replace zeros with small number 
 TPM_counts <- convertCounts(
   counts_matrix, # or counts_matrix (raw) or adjusted for combat batch adjusted counts 
   unit = "TPM",
   genes_with_exonic_length$exonic.gene.sizes,
-  log = FALSE
+  log = TRUE
 )
 
-write.table(TPM_counts, "../RNA_counts/n579_TPM_counts.txt", sep = "\t", quote = FALSE)
+write.table(TPM_counts, "../RNA_counts/n580_TPM_counts_log2.txt", sep = "\t", quote = FALSE)
 ```
-```
+
