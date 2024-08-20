@@ -5,7 +5,7 @@ SNP array data available on Synapse: syn51238188\
 Bulk RNAseq expressiond data available on Synapse: syn52394100
 
 ## Set up conda environment
-This workflow uses conda. For information on how to install conda [here](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html)
+This workflow uses conda. For information on how to install conda may be found  [here](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html)
 
 To create the environment:
 ```
@@ -20,11 +20,10 @@ conda env create -n QTL --file QTL.yml
 #     $ conda deactivate QTL
 
 # Additionally, the liftover tool will need to be obtained
-# The liftOver tool can not be obtained via conda. 
 # See https://genome.ucsc.edu/cgi-bin/hgLiftOver for instructions. 
 ```
 
-# Clean up genotype data, run GWAS and eQTL before imputing 
+## Quality control genotype data
 ### Step 1: Match RNAseq samples to samples with SNP array data 
 The output will be a filtered metadata that contains the information on the individuals that have both bulk RNAseq expression data and SNP array data. 
 ```
@@ -92,7 +91,7 @@ awk '{print "chr" $1, $4 -1, $4, $2 }' Filtered_n598_CWOW.bim | \
 
 The genome build of HapMap III data is NCBI36. In order to update the HapMap III data to GRCh38, we use the UCSC liftOver tool. The liftOver tool takes information in a format similar to the PLINK .bim format, the UCSC bed format and a liftover chain, containing the mapping information between the old genome (target) and new genome (query). It returns the updated annotation and a file with unmappable variants. 
 
-The liftOver tool will need to be first downloaded, which is freely available for academic use. It can not be obtained via conda. [Instructions](https://genome.ucsc.edu/cgi-bin/hgLiftOver)on how to download liftOver. 
+The liftOver tool will need to be first downloaded, which is freely available for academic use. It can not be obtained via conda. [Instructions](https://genome.ucsc.edu/cgi-bin/hgLiftOver) on how to download liftOver. 
 
 Additionally the appropriate chain file will need to be download. The file names reflect the assembly conversion data contained within
 in the format <db1>To<Db2>.over.chain.gz. For example, a file named hg19ToHg38.over.chain.gz file contains the liftOver data needed to
@@ -122,7 +121,8 @@ awk '{print $4}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.snps
 # Ectract updated positions
 awk '{print $4, $3}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.pos
 
-# Update the hapmap reference by extracting the mappable variants from the old build and update their position. 
+# Update the hapmap reference 
+# Extract the mappable variants from the old build and update their position
 plink --bfile HapMapIII_NCBI36 \
       --extract HapMapIII_CGRCh38.snps \
       --update-map HapMapIII_CGRCh38.pos \
@@ -134,7 +134,8 @@ awk '{print $4}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.snps
 # Ectract updated positions
 awk '{print $4, $3}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.pos
 
-# Update the CWOW data by extracting the mappable variants from the old build and update their position. 
+# Update the CWOW data 
+# Extract the mappable variants from the old build and update their position
 plink --bfile Filtered_n598_CWOW \
       --extract CWOW_n598_CGRCh38.snps \
       --update-map CWOW_n598_CGRCh38.pos \
@@ -271,10 +272,10 @@ The script will output a clean dataset after removing outlier samples and marker
 cd ../scripts
 R 02_PLINK_QC.Rmd
 ```
-An overview of the results may be viewed here: https://rpubs.com/olneykimberly/PlinkQC_LBD_CWOW_SNP_array 
+An overview of the results may be viewed [here](https://rpubs.com/olneykimberly/PlinkQC_LBD_CWOW_SNP_array)
 The output is cleaned data that removed individuals and markers that didn't pass the quality control checks as described in the 02_PLINK_QC.Rmd 
 
-There are now 579 individuals that passed QC and 616,183 SNPs. Lets rename the files to reflect that there are now only 579 individuals. 
+There are now 580 individuals that passed QC and 616,183 SNPs. Lets rename the files to reflect that there are now only 580 individuals. 
 ```
 cd ../snp_array
 mv Filtered_n598_CWOW.clean.hh  Filtered_n580_CWOW.clean.hh
@@ -284,34 +285,40 @@ mv Filtered_n598_CWOW.clean.bim Filtered_n580_CWOW.clean.bim
 ```
 
 ### Step 4: Create PCA with the filtered CWOW data
-Create PCA and update metadata file to reflect that there are now 579 individuals 
+Create PCA and update metadata file to reflect that there are now 580 individuals 
 ```
+cd ../scripts
 # PCA 
-plink --bfile ../snp_array/Filtered_n580_CWOW.clean --pca 20 --out ../snp_array/Filtered_n579_CWOW_pca_results
+plink --bfile ../snp_array/Filtered_n580_CWOW.clean \
+      --pca 20 --out ../snp_array/Filtered_n579_CWOW_pca_results
 
 # update metadata
 R 03_update_meta.Rmd
 ```
 ### Step 5: Create genotype file
 ```
-plink --bfile Filtered_n580_CWOW.clean --recodeA --out Filtered_n580_CWOW.clean_genotype    
+plink --bfile Filtered_n580_CWOW.clean \
+      --recodeA --out Filtered_n580_CWOW.clean_genotype    
 ```
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
 R 04_process_genotype.Rmd
 ```
 ### Step 7: Run Matrix eQTL 
-Firstly, the files will need some additional formating. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
+Firstly, the files will need some additional formatting. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
 ```
 # Format the inputs 
 R 05a_format_inputs_for_MatrixEQTL.Rmd
+
 # Run matrix eQTL, note that it takes several hours to run. Submit as a background job. 
 R 05b_run_MatrixEQTL.Rmd
 ```
+
 ### Step 8: Plot the eQTL and GWAS results 
 ```
 # eQTL plots for top SNP to gene associations
 R 06_plot_eQTLs.Rmd
+
 # Manhattan plots from GWAS 
 R 07_GWAS.Rmd
 ```
@@ -333,14 +340,11 @@ TOPMed Imputation Server accepts VCF files compressed with bgzip
 
 ```
 # create a frequency file
-plink --freq --bfile Filtered_n579_CWOW.clean --out Filtered_n579_CWOW.clean.frequency
+plink --freq --bfile Filtered_n579_CWOW.clean \
+      --out Filtered_n579_CWOW.clean.frequency
+      
 # Create VCF
-plink --bfile Filtered_n579_CWOW.clean --recode vcf
+plink --bfile Filtered_n579_CWOW.clean 
+      --recode vcf
 ```
 
-
-TO add above
-```
-
-
-```
