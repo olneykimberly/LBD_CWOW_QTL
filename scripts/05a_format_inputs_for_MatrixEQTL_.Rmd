@@ -92,12 +92,12 @@ snp_ids <- read.delim("../snp_array/snp_ids_GRCh38.txt")
 
 # Define  subsets
 subsets <- list(
- # "LBD_control" = c("CONTROL", "LBD_S", "LBD_AS", "LBD_ATS", "LBD_TS"), # all LBD types
-  "AD_control" = c("CONTROL", "AD")
-#  "PA_control" = c("CONTROL", "PA"),
-#  "LBD_S_control" = c("CONTROL", "LBD_S"),
- # "LBD_AS_control" = c("CONTROL", "LBD_AS"),
-#  "LBD_ATS_control" = c("CONTROL", "LBD_ATS")
+  "LBD_control" = c("CONTROL", "LBD_S", "LBD_AS", "LBD_ATS", "LBD_TS"), # all LBD types
+   #"AD_control" = c("CONTROL", "AD"),
+  "PA_control" = c("CONTROL", "PA"),
+  "LBD_S_control" = c("CONTROL", "LBD_S"),
+  "LBD_AS_control" = c("CONTROL", "LBD_AS"),
+  "LBD_ATS_control" = c("CONTROL", "LBD_ATS")
 )
 
 # Iterate over each subset
@@ -157,7 +157,6 @@ for (subset_name in names(subsets)) {
   write.table(CWOW_snps_reordered, snp_output_file, sep = " ", quote = FALSE)
 }
 ```
-
 
 # SNP and gene information 
 ```{r SNP_and_gene_data}

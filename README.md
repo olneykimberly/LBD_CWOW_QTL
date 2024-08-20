@@ -19,9 +19,12 @@ conda env create -n QTL --file QTL.yml
 #
 #     $ conda deactivate QTL
 
+# Additionally, the liftover tool will need to be obtained
+# The liftOver tool can not be obtained via conda. 
+# See https://genome.ucsc.edu/cgi-bin/hgLiftOver for instructions. 
 ```
 
-# Clean up genotype data, run GWAS and eQTL
+# Clean up genotype data, run GWAS and eQTL before imputing 
 ### Step 1: Match RNAseq samples to samples with SNP array data 
 The output will be a filtered metadata that contains the information on the individuals that have both bulk RNAseq expression data and SNP array data. 
 ```
@@ -32,24 +35,29 @@ R 01_check_meta.Rmd
 ### Step 2: Remove excluded IIDs
 Remove individuals that don't have corresponding RNA data and remove an individual from each related sample pair. A list of samples to exclude was created when running the R script 01_check_meta.Rmd
 ```
-plink --bfile ../snp_array/632_CWOW --remove ../metadata/exclude_fam_IID.txt --make-bed --out ../snp_array/Filtered_n598_CWOW
+plink --bfile ../snp_array/632_CWOW \
+      --remove ../metadata/exclude_fam_IID.txt \
+      --make-bed --out ../snp_array/Filtered_n598_CWOW
 
 # inspect filtering
 wc -l  ../snp_array/Filtered_n598_CWOW.fam # there should be 598
 ```
 
 ### Step 3: Quality control 
-First, run Principal component analysis (PCA) with plink to determine population ancestry and identify outliers. 
+First, run Principal component analysis (PCA) with plink to determine identify outliers. 
+PCA with ancestry information will also be looked at, but for now, we will look at the PCA of only the CWOW samples. 
 ```
-plink --bfile ../snp_array/Filtered_n598_CWOW --pca 20 --out ../snp_array/Filtered_n598_CWOW_pca_results
+plink --bfile ../snp_array/Filtered_n598_CWOW \
+      --pca 20 \
+      --out ../snp_array/Filtered_n598_CWOW_pca_results
 
-# Plot the PCA. 
+# Plot the PCA
 R 02_PLINK_population_PCA.Rmd
 ```
 The above PCA only contains individuals in the CWOW dataset. The identification of individuals of divergent ancestry can be achieved by combining the genotypes of the the CWOW population with genotypes of a reference dataset consisting of individuals from known ethnicities (for instance individuals from the Hapmap or 1000 genomes study). Below describes how to download the HapMap III data and merge with the CWOW data. 
 
 #### Reference HAPMAP data 
-Following the tutorial outlined here: https://meyer-lab-cshl.github.io/plinkQC/articles/HapMap.html
+Following the tutorial outlined in plinkQC HapMap [here](https://meyer-lab-cshl.github.io/plinkQC/articles/HapMap.html)
 ```
 # First create a reference folder in which the hapmap data will be stored
 cd ../snp_array/
@@ -65,88 +73,118 @@ bunzip2 hapmap3_r2_b36_fwd.consensus.qc.poly.map.bz2
 bunzip2 hapmap3_r2_b36_fwd.consensus.qc.poly.ped.bz2
 
 # Run plink to create a bed file 
-plink --file hapmap3_r2_b36_fwd.consensus.qc.poly --make-bed --out HapMapIII_NCBI36
+plink --file hapmap3_r2_b36_fwd.consensus.qc.poly \
+      --make-bed --out HapMapIII_NCBI36
 ```
 
 Hapmap chromosome data is encoded numerically, with chrX represented by chr23, and chrY as chr24. In order to match to data encoded by chrX and chrY, we will have to rename these hapmap chromosomes. 
 Be sure to be in the snp_array/reference folder 
 ```
-# Assumes your in the snp_array/reference folder 
-awk '{print "chr" $1, $4 -1, $4, $2 }' HapMapIII_NCBI36.bim | sed 's/chr23/chrX/' | sed 's/chr24/chrY/' > HapMapIII_NCBI36.tolift
-awk '{print "chr" $1, $4 -1, $4, $2 }' Filtered_n598_CWOW.bim | sed 's/chr23/chrX/' | sed 's/chr24/chrY/' > Filtered_n598_CWOW.tolift
+# Assumes your in the snp_array/reference/ folder 
+awk '{print "chr" $1, $4 -1, $4, $2 }' HapMapIII_NCBI36.bim | \
+     sed 's/chr23/chrX/' | \
+     sed 's/chr24/chrY/' > HapMapIII_NCBI36.tolift
+     
+awk '{print "chr" $1, $4 -1, $4, $2 }' Filtered_n598_CWOW.bim | \
+     sed 's/chr23/chrX/' | \
+     sed 's/chr24/chrY/' > Filtered_n598_CWOW.tolift
 ```
 
 The genome build of HapMap III data is NCBI36. In order to update the HapMap III data to GRCh38, we use the UCSC liftOver tool. The liftOver tool takes information in a format similar to the PLINK .bim format, the UCSC bed format and a liftover chain, containing the mapping information between the old genome (target) and new genome (query). It returns the updated annotation and a file with unmappable variants. 
 
-The liftOver tool will need to be first downloaded, which is freely available for academic use. It can not be obtained via conda. See https://genome.ucsc.edu/cgi-bin/hgLiftOver for instructions on how to download liftOver. 
+The liftOver tool will need to be first downloaded, which is freely available for academic use. It can not be obtained via conda. [Instructions](https://genome.ucsc.edu/cgi-bin/hgLiftOver)on how to download liftOver. 
 
 Additionally the appropriate chain file will need to be download. The file names reflect the assembly conversion data contained within
-in the format <db1>To<Db2>.over.chain.gz. For example, a file named hg18ToHg38.over.chain.gz file contains the liftOver data needed to
-convert hg18 coordinates to hg38. 
+in the format <db1>To<Db2>.over.chain.gz. For example, a file named hg19ToHg38.over.chain.gz file contains the liftOver data needed to
+convert hg19 coordinates to hg38. 
 
 ```
 # Download chain    
 wget http://hgdownload.cse.ucsc.edu/goldenpath/hg18/liftOver/hg18ToHg38.over.chain.gz
 wget https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
+
 # unzip 
 gunzip hg18ToHg38.over.chain.gz
 gunzip hg19ToHg38.over.chain.gz
  
 # liftOver tool had to be downloaded first, see: https://genome-store.ucsc.edu/products/
-liftOver HapMapIII_NCBI36.tolift hg18ToHg38.over.chain HapMapIII_CGRCh38 HapMapIII_NCBI36.unMapped
-liftOver Filtered_n598_CWOW.tolift reference/hg19ToHg38.over.chain CWOW_n598_CGRCh38 CWOW_n598_CGRCh38.unMapped
+# Lift over HapMap data
+liftOver HapMapIII_NCBI36.tolift \
+         hg18ToHg38.over.chain \
+         HapMapIII_CGRCh38 HapMapIII_NCBI36.unMapped
+# Lift over CWOW data 
+liftOver Filtered_n598_CWOW.tolift \
+        reference/hg19ToHg38.over.chain \
+        CWOW_n598_CGRCh38 CWOW_n598_CGRCh38.unMapped
 
-# ectract mapped variants
+# Ectract mapped variants
 awk '{print $4}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.snps
-# ectract updated positions
+# Ectract updated positions
 awk '{print $4, $3}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.pos
 
-# update the hapmap reference by extracting the mappable variants from the old build and update their position. 
-plink --bfile HapMapIII_NCBI36 --extract HapMapIII_CGRCh38.snps --update-map HapMapIII_CGRCh38.pos --make-bed --out HapMapIII_CGRCh38logs
+# Update the hapmap reference by extracting the mappable variants from the old build and update their position. 
+plink --bfile HapMapIII_NCBI36 \
+      --extract HapMapIII_CGRCh38.snps \
+      --update-map HapMapIII_CGRCh38.pos \
+      --make-bed --out HapMapIII_CGRCh38logs
 
 ## Repeat for CWOW data 
-# ectract mapped variants
+# Ectract mapped variants
 awk '{print $4}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.snps
-# ectract updated positions
+# Ectract updated positions
 awk '{print $4, $3}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.pos
 
-# update the CWOW data by extracting the mappable variants from the old build and update their position. 
-plink --bfile Filtered_n598_CWOW --extract CWOW_n598_CGRCh38.snps --update-map CWOW_n598_CGRCh38.pos --make-bed --out CWOW_n598_CGRCh38_updated
+# Update the CWOW data by extracting the mappable variants from the old build and update their position. 
+plink --bfile Filtered_n598_CWOW \
+      --extract CWOW_n598_CGRCh38.snps \
+      --update-map CWOW_n598_CGRCh38.pos \
+      --make-bed --out CWOW_n598_CGRCh38_updated
 ```
-After the above steps, the HapMap III & CWOW dataset can be used for inferring study ancestry as described below. 
+After the above steps have been completed to liftover, the HapMap III & CWOW data sets can be used for inferring study ancestry as described below. 
 
 #### Match CWOW genotypes with hapmap reference data
-In order to compute joint principal components of the reference hapmap and the CWOW study population, we’ll need to combine the two datasets. The plink –merge function enables this merge, but requires the variants in the datasets to be matching by chromosome, position and alleles. The following sections show how to extract the relevant data from the reference and study dataset and how to filter matching variants, as described here: https://meyer-lab-cshl.github.io/plinkQC/articles/AncestryCheck.html
+In order to compute joint principal components of the reference hapmap and the CWOW study population, we’ll need to combine the two datasets. The plink –merge function enables this merge, but requires the variants in the datasets to be matching by chromosome, position and alleles. The following sections show how to extract the relevant data from the reference and study data set and how to filter matching variants, as described [here](https://meyer-lab-cshl.github.io/plinkQC/articles/AncestryCheck.html) in the plinkQC tutorial. 
 
-Filter reference and study data for non A-T or G-C SNPs. These SNPs are more difficult to align and only a subset of SNPs is required for the analysis, we will remove them from both the reference and study data set.
+Filter reference and study data for non A-T or G-C SNPs as these SNPs are more difficult to align and only a subset of SNPs is required for the analysis, we will remove them from both the reference and study data set.
 ```
 cd ../ # Move out of the reference folder and into the snp_array folder 
-# Filter CWOW data and create bed file 
-awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA")  {print $2}' Filtered_n598_CWOW.bim  > Filtered_n598_CWOW.ac_gt_snps
-plink --bfile  Filtered_n598_CWOW --exclude Filtered_n598_CWOW.ac_gt_snps --make-bed --out Filtered_n598_CWOW.no_ac_gt_snps
-      
+
 # Filter hapmap data and create bed file 
-awk 'BEGIN {OFS="\t"}  ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA")  {print $2}' reference/HapMapIII_CGRCh38.bim > reference/HapMapIII_CGRCh38.ac_gt_snps
-plink --bfile  reference/HapMapIII_CGRCh38 --exclude reference/HapMapIII_CGRCh38.ac_gt_snps --make-bed --out reference/HapMapIII_CGRCh38.ac_gt_snps.no_ac_gt_snps
+awk 'BEGIN {OFS="\t"}  \
+    ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA") \
+    {print $2}' reference/HapMapIII_CGRCh38.bim > reference/HapMapIII_CGRCh38.ac_gt_snps
+
+plink --bfile reference/HapMapIII_CGRCh38 \
+      --exclude reference/HapMapIII_CGRCh38.ac_gt_snps \
+      --make-bed --out reference/HapMapIII_CGRCh38.ac_gt_snps.no_ac_gt_snps
+
+# Filter CWOW data and create bed file 
+awk 'BEGIN {OFS="\t"} \
+    ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA") \
+    {print $2}' Filtered_n598_CWOW.bim  > Filtered_n598_CWOW.ac_gt_snps
+
+plink --bfile Filtered_n598_CWOW \
+      --exclude Filtered_n598_CWOW.ac_gt_snps \
+      --make-bed --out Filtered_n598_CWOW.no_ac_gt_snps
 ```
 
 #### Prune
-Conduct principle component analysis on genetic variants that are pruned for variants in linkage disequilibrium (LD) with an 𝑟2>0.2 in a 50kb window. The LD-pruned dataset is generated below, using plink–indep-pairwise to compute the LD-variants. additionally exclude range is used to remove genomic ranges of known high-LD structure. This file was originally provided by [6] and is available in file.path(find.package('plinkQC'),'extdata','high-LD-regions.txt').
+Conduct principle component analysis on genetic variants that are pruned for variants in linkage disequilibrium (LD) with an 𝑟2>0.2 in a 50kb window. The LD-pruned data set is generated below, using plink–indep-pairwise to compute the LD-variants. Additionally exclude range is used to remove genomic ranges of known high-LD structure. This file is available in file.path(find.package('plinkQC'),'extdata','high-LD-regions.txt').
 ```
 # Create prune in file 
-plink --bfile  Filtered_n598_CWOW.no_ac_gt_snps \
-      --exclude range  reference/high-LD-regions-hg38-GRCh38.txt \
+plink --bfile Filtered_n598_CWOW.no_ac_gt_snps \
+      --exclude range reference/high-LD-regions-hg38-GRCh38.txt \
       --indep-pairwise 50 5 0.2 \
       --out Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps
 
 # Create bed file of the newly pruned data
-plink --bfile  Filtered_n598_CWOW.no_ac_gt_snps \
+plink --bfile Filtered_n598_CWOW.no_ac_gt_snps \
       --extract Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps.prune.in \
       --make-bed \
       --out Filtered_n598_CWOW.no_ac_gt_snps.pruned
 
 # Filter hapmap reference data for the same SNP set as in the CWOW study
-plink --bfile  reference/HapMapIII_CGRCh38 \
+plink --bfile reference/HapMapIII_CGRCh38 \
       --extract Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps.prune.in \
       --make-bed \
       --out reference/HapMapIII_CGRCh38.pruned
@@ -165,7 +203,7 @@ plink --bfile reference/HapMapIII_CGRCh38.pruned \
       --out reference/HapMapIII_CGRCh38.updateChr
 ```
 
-Position mismatch - Similar to the chromosome matching, we use an awk-script to find variants with mis-matching chromosomal positions
+Position mismatch - Similar to the chromosome matching, we use awk to find variants with mis-matching chromosomal positions
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$2]=$4; next} \
     ($2 in a && a[$2] != $4)  {print a[$2],$2}' \
@@ -173,13 +211,14 @@ awk 'BEGIN {OFS="\t"} FNR==NR {a[$2]=$4; next} \
     reference/HapMapIII_CGRCh38.toUpdatePos
 ```
 
-Unlike chromosomal and base-pair annotation, mismatching allele-annotations will not only prevent the plink –merge, but also mean that it is likely that actually a different genotype was measured. Initially, we can use the following awk-script to check if non-matching allele codes are a simple case of allele flips.
+Unlike chromosomal and base-pair annotation, mismatching allele-annotations will not only prevent the plink –merge, but also mean that it is likely that actually a different genotype was measured. Initially, we can use the following awk to check if non-matching allele codes are a simple case of allele flips.
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$1$2$4]=$5$6; next} \
     ($1$2$4 in a && a[$1$2$4] != $5$6 && a[$1$2$4] != $6$5)  {print $2}' \
     Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim > \
     reference/HapMapIII_CGRCh38.toFlip
 ```
+
 We use plink to update the mismatching positions and possible allele-flips identified above.
 Any alleles that do not match after allele flipping, are identified and removed from the reference dataset.
 ```
