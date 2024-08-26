@@ -359,13 +359,66 @@ wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sit
 ### Generate VCF files from plink files
 TOPMed Imputation Server accepts VCF files compressed with bgzip
 
+
+Pre-phase 
 ```
 # create a frequency file
-plink --freq --bfile Filtered_n579_CWOW.clean \
-      --out Filtered_n579_CWOW.clean.frequency
+plink --freq --bfile Filtered_n580_CWOW.clean \
+      --out Filtered_n580_CWOW.clean.frequency
       
 # Create VCF
-plink --bfile Filtered_n579_CWOW.clean 
-      --recode vcf
+plink --bfile Filtered_n580_CWOW.clean \
+      --recode vcf \
+      --out CWOW
+
+
+# Sort VCF by genomic position
+bcftools sort CWOW.vcf -o CWOW_sorted.vcf
+bgzip CWOW_sorted.vcf
+bcftools index CWOW_sorted.vcf.gz
+bcftools index -s CWOW_sorted.vcf.gz | cut -f1 | sort | uniq > chrom_names.txt
+sh remap_text.sh
+bcftools annotate --rename-chrs rename_map.txt -o renamed_file.vcf.gz -O z CWOW_sorted.vcf.gz
+bcftools index renamed_file.vcf.gz
+
+
+# Create separate VCFs for each chromosome
+for chr in {1..22} X Y; do
+    bcftools view -r chr$chr renamed_file.vcf.gz -o chr$chr.vcf
+done
+
+# Compress and index the VCF files
+for chr in {1..22} X Y; do
+    bgzip chr$chr.vcf
+    tabix -p vcf chr$chr.vcf.gz
+done
+
+
 ```
 
+# STRAND and ALLELE flips 
+plink --bfile your_data --flip-scan --out flip_report
+plink --bfile your_data --flip flip_report.flip --make-bed --out corrected_data
+plink --bfile your_data --a1-allele reference_alleles.txt --make-bed --out consistent_alleles
+
+
+
+Check Strand Alignment
+PLINK: You can use PLINK’s --flip option to correct strand flips. The --flip command can be used after generating a strand report with --flip-scan, which detects potential strand flips based on allele frequencies.
+bash
+Copy code
+plink --bfile your_data --flip-scan --out flip_report
+Then use:
+bash
+Copy code
+plink --bfile your_data --flip flip_report.flip --make-bed --out corrected_data
+Reference Files: Ensure that the strand alignment of your target dataset matches that of the reference dataset. You can compare allele frequencies and manually check or use software like Genotype Harmonizer.
+2. Verify Allele Coding
+Allele Matching: SNPs can sometimes have alleles swapped (e.g., A/G instead of G/A). You can use PLINK’s --a1-allele option to ensure allele coding is consistent with a reference.
+bash
+Copy code
+plink --bfile your_data --a1-allele reference_alleles.txt --make-bed --out consistent_alleles
+Allele Frequency Comparison: Compare allele frequencies between your dataset and a reference panel using PLINK’s --freq command. Large discrepancies might indicate allele mismatches or strand issues.
+3. Review SNP Annotations
+Check SNP IDs: Ensure that SNP identifiers match between your dataset and the reference. Tools like liftOver or dbSNP can help verify the correct SNP coordinates and annotations.
+Filter Non-matching SNPs: You may want to remove SNPs that don’t match the reference dataset using --extract or --exclude options in PLINK.

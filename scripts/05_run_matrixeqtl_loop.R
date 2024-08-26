@@ -59,7 +59,7 @@ useModel = modelLINEAR_CROSS # modelANOVA or modelLINEAR or modelLINEAR_CROSS
 # Define the subsets
 subsets <- c(
   "LBD_control", # all LBD samples
- # "AD_control", 
+  "AD_control", 
   "PA_control",
   "LBD_S_control",
   "LBD_AS_control",
