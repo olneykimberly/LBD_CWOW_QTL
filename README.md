@@ -277,7 +277,9 @@ R 02_PLINK_QC.Rmd
 An overview of the results may be viewed [here](https://rpubs.com/olneykimberly/PlinkQC_LBD_CWOW_SNP_array)
 The output is cleaned data that removed individuals and markers that didn't pass the quality control checks as described in the 02_PLINK_QC.Rmd 
 
-There are now 580 individuals that passed QC and 616,183 SNPs. Lets rename the files to reflect that there are now only 580 individuals. 
+There are now 580 individuals that passed QC and 615,293 SNPs. Lets rename the files to reflect that there are now only 580 individuals. 
+Total number of samples remaining post QC: 580
+Total SNPs remaining post QC: 615,293 before QC was 714,238
 ```
 cd ../snp_array
 mv Filtered_n598_CWOW.clean.hh  Filtered_n580_CWOW.clean.hh
@@ -285,6 +287,7 @@ mv Filtered_n598_CWOW.clean.bed Filtered_n580_CWOW.clean.bed
 mv Filtered_n598_CWOW.clean.fam Filtered_n580_CWOW.clean.fam
 mv Filtered_n598_CWOW.clean.bim Filtered_n580_CWOW.clean.bim
 ```
+
 
 ### Step 4: Create PCA with the filtered CWOW data
 Create PCA and update metadata file to reflect that there are now 580 individuals 
@@ -356,6 +359,26 @@ wget http://www.well.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.2.7.zip
 wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
 ```
 
+### strand and allele flip correction
+Strand flips and allele flips are common issues encountered in SNP array data when aligning genotypes between different datasets or comparing to a reference panel. These issues arise because SNPs can be represented in different ways depending on the strand or the order of the alleles.
+
+A strand flip occurs when the SNP is read from the opposite DNA strand. For example, an A/T SNP on one strand will appear as a T/A SNP on the complementary strand. If one dataset refers to the forward strand and another to the reverse strand, the SNP may appear as if it has different alleles, leading to discrepancies unless corrected.
+An allele flip refers to cases where the alleles of a SNP are swapped (e.g., A/G versus G/A). Although technically the same SNP, the order of alleles might differ between datasets or when compared to a reference. Allele flips can create inconsistency in analysis, especially when comparing allele frequencies or performing meta-analyses.
+
+We will use PLINK’s --flip option to correct strand flips. The --flip command can be used after generating a strand report with --flip-scan, which detects potential strand flips based on allele frequencies.
+We can use PLINK’s --a1-allele option to ensure allele coding is consistent with a reference.
+Finally, we will compare allele frequencies between our CWOW dataset and a reference panel using PLINK’s --freq command. Large discrepancies might indicate allele mismatches or strand issues.
+We may also want to remove SNPs that don’t match the reference dataset using --extract or --exclude options in PLINK.
+```
+# STRAND and ALLELE flips 
+plink --bfile Filtered_n580_CWOW.clean --flip-scan --out flip_report
+plink --bfile your_data --flip flip_report.flip --make-bed --out corrected_data
+plink --bfile your_data --a1-allele reference_alleles.txt --make-bed --out consistent_alleles
+```
+Check output: Next we will ensure that the strand alignment of our CWOW target dataset matches that of the reference dataset. We can compare allele frequencies and manually check or use software like Genotype Harmonizer.
+We will also ensure that SNP identifiers match between our CWOW dataset and the reference. Tools like liftOver or dbSNP can help verify the correct SNP coordinates and annotations.
+
+
 ### Generate VCF files from plink files
 TOPMed Imputation Server accepts VCF files compressed with bgzip
 
@@ -395,30 +418,3 @@ done
 
 
 ```
-
-# STRAND and ALLELE flips 
-plink --bfile your_data --flip-scan --out flip_report
-plink --bfile your_data --flip flip_report.flip --make-bed --out corrected_data
-plink --bfile your_data --a1-allele reference_alleles.txt --make-bed --out consistent_alleles
-
-
-
-Check Strand Alignment
-PLINK: You can use PLINK’s --flip option to correct strand flips. The --flip command can be used after generating a strand report with --flip-scan, which detects potential strand flips based on allele frequencies.
-bash
-Copy code
-plink --bfile your_data --flip-scan --out flip_report
-Then use:
-bash
-Copy code
-plink --bfile your_data --flip flip_report.flip --make-bed --out corrected_data
-Reference Files: Ensure that the strand alignment of your target dataset matches that of the reference dataset. You can compare allele frequencies and manually check or use software like Genotype Harmonizer.
-2. Verify Allele Coding
-Allele Matching: SNPs can sometimes have alleles swapped (e.g., A/G instead of G/A). You can use PLINK’s --a1-allele option to ensure allele coding is consistent with a reference.
-bash
-Copy code
-plink --bfile your_data --a1-allele reference_alleles.txt --make-bed --out consistent_alleles
-Allele Frequency Comparison: Compare allele frequencies between your dataset and a reference panel using PLINK’s --freq command. Large discrepancies might indicate allele mismatches or strand issues.
-3. Review SNP Annotations
-Check SNP IDs: Ensure that SNP identifiers match between your dataset and the reference. Tools like liftOver or dbSNP can help verify the correct SNP coordinates and annotations.
-Filter Non-matching SNPs: You may want to remove SNPs that don’t match the reference dataset using --extract or --exclude options in PLINK.
