@@ -451,14 +451,76 @@ If you use the Imputation TOPMed Server, cite:
 Das S, Forer L, Schönherr S, Sidore C, Locke AE, Kwong A, Vrieze S, Chew EY, Levy S, McGue M, Schlessinger D, Stambolian D, Loh PR, Iacono WG, Swaroop A, Scott LJ, Cucca F, Kronenberg F, Boehnke M, Abecasis GR, Fuchsberger C. Next-generation genotype imputation service and methods. Nature Genetics 48, 1284–1287 (2016).
 
 ### Register and install packages
+In the snp_array/reference folder. See https://www.chg.ox.ac.uk/~wrayner/tools/ for details. 
 ```
 wget http://www.well.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.2.7.zip
-wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
+unzip HRC-1000G-check-bim-v4.3.0.zip
+```
+
+### Obtain the 1000 Genomes Phase 3 reference panel and lift over to GRCh38
+```
+wget https://www.chg.ox.ac.uk/~wrayner/tools/1000GP_Phase3_combined.legend.gz
+gzip 1000GP_Phase3_combined.legend.gz
+```
+The 1000G reference panel is for hg19 and will need to be lifted over to GRCh38
+```
+# Format legened into a .bed
+awk 'NR > 1 {print "chr"$2"\t"$3-1"\t"$3"\t"$1"\t0\t+"}' \
+            1000GP_Phase3_combined.legend > 1000GP_Phase3_combined.bed
+            
+liftOver 1000GP_Phase3_combined.bed \ # input
+         hg19ToHg38.over.chain \ # chain 
+         1000GP_Phase3_combined_lifted_to_GRCh38.bed \ # output lifted to GRCh38
+         1000GP_Phase3_combined_unlifted.bed # ouptut of unlifted variants
+
+# Opitional, for checking the file 
+# Format lifted .bed into legend format
+awk '{print $4"\t"$1"\t"$3"\t"substr($4, index($4, ":")+1)}' \
+        1000GP_Phase3_combined_lifted_to_GRCh38.bed > 1000GP_Phase3_combined_lifted_to_GRCh38.legend
+```
+
+Then in order to keep the 1000GP legend information, such as population ancestry frequency information, the lifted .bed will need to be merged with the unlifted 1000GP_Phase3_combined.legend.
+```
+# Step 1 - merge
+python 01_merge_legend_with_lifted_bed.py
+# inputs 1000GP_Phase3_combined.legend and 1000GP_Phase3_combined_lifted_to_GRCh38.bed
+# Output 1000GP_Phase3_combined_lifted_to_GRCh38_merged_output.txt
+
+# Step 2 - format
+python 02_format_merged_legend.py 
+# input 1000GP_Phase3_combined_lifted_to_GRCh38_merged_output.txt 
+# output GRCh38_1000GP_Phase3_combined.legend
+```
+
+### Check CWOW SNPs against the 1000G reference panel
+Execute HRC-1000G-check-bim.pl script which will generate the Run-plink.sh file 
+The script will check plink .bim files against 1000G for strand, id names, positions, alleles, ref/alt assignment. 
+The output will be Run-plink.sh. 
+```
+# Create a frequency file 
+plink --freq \
+      --bfile ../../CWOW_n598_GRCh38_updated.clean.bim \
+      --out ../../CWOW.clean.frequency.frq
+
+perl HRC-1000G-check-bim.pl \
+     -b ../../CWOW_n598_GRCh38_updated.clean.bim \
+     -f ../../CWOW.clean.frequency.frq \
+     -r GRCh38_1000GP_Phase3_combined.legend -g -p EUR
+# 1000G population will default to ALL if not specified. Most samples in CWOW are self reported white. 
+# Writing plink commands to: Run-plink.sh
+```
+### Run-plink.sh
+```
+plink --bfile CWOW_n598_GRCh38_updated.clean --exclude Exclude-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP1 --allow-extra-chr
+plink --bfile CWOW_n598_GRCh38_updated.clean  --update-map Chromosome-CWOW_n598_GRCh38_updated.clean-1000G.txt --update-chr --make-bed --out TEMP2 --allow-extra-chr
+plink --bfile TEMP2 --update-map Position-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP3 --allow-extra-chr
+plink --bfile TEMP2 --flip Strand-Flip-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP --allow-extra-chr
+plink --bfile TEMP --a2-allele Force-Allele1-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out CWOW_n598_GRCh38_updated.clean-updated --allow-extra-chr
+
 ```
 
 ### Generate VCF files from plink files
 TOPMed Imputation Server accepts VCF files compressed with bgzip
-
 
 Pre-phase 
 ```
@@ -501,126 +563,7 @@ for chr in {1..22} X Y; do
     bgzip chr$chr.vcf
     tabix -p vcf chr$chr.vcf.gz
 done
-
-
 ```
-
-# Extracts
-wget https://www.dropbox.com/s/e5n8yr4n7y91fyp/all_hg38.pgen.zst?dl=1
-wget https://www.dropbox.com/s/cy46f1c8yutd1h4/all_hg38.pvar.zst?dl=1
-wget https://www.dropbox.com/scl/fi/u5udzzaibgyvxzfnjcvjc/hg38_corrected.psam?rlkey=oecjnk4vmbhc8b1p202l0ih4x&dl=1
-
-wget http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr{{1..22},X}.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz{,.tbi}
-
-bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%INFO/STRAND\n' your_reference.vcf.gz > reference_strand.txt
-plink --bfile your_snp_data --reference-ref reference_strand.txt --flip strand_flip_list.txt --make-bed --out corrected_snp_data
-bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\n' your_reference.vcf.gz > reference_alleles.txt
-plink --bfile corrected_snp_data --a2-alleles allele_switch_list.txt --make-bed --out final_snp_data
-
-
-bcftools concat -a -O z -o 1k_GRCh38.vcf.gz \
-ALL.chr1.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr2.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr3.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr4.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr5.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr7.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr8.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr9.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr10.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr11.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr12.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr13.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr14.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr15.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr16.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr17.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr18.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr19.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr20.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr21.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chr22.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
-ALL.chrX.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz
-
-
-plink --bfile ../../CWOW_n598_CGRCh38_updated.clean --reference-ref reference_strand.txt --flip strand_flip_list.txt --make-bed --out corrected_snp_data
-
-
-
-
-
-
-
-wget https://www.chg.ox.ac.uk/~wrayner/tools/1000GP_Phase3_combined.legend.gz
-wget https://www.chg.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.3.0.zip
-unzip HRC-1000G-check-bim-v4.3.0.zip
-perl HRC-1000G-check-bim.pl -b ../../CWOW_n598_GRCh38_updated.clean.bim -f ../../CWOW.clean.frequency.frq -r GRCh38_1000GP_Phase3_combined.legend -g -p EUR
-
-
-
-
-
-Details written to log file: /research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../LOG-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-
-Creating variant lists
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Force-Allele1-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Strand-Flip-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../ID-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Position-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Chromosome-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Exclude-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../FreqPlot-CWOW_n598_CGRCh38_updated.clean-1000G.txt
-
-
-Matching to 1000G
-
-Position Matches
- ID matches 1000G 0
- ID Doesn't match 1000G 6429
- Total Position Matches 6429
-ID Match
- Position different from 1000G 605592
-No Match to 1000G 2891
-Skipped (MT) 269
-Total in bim file 615293
-Total processed 615181
-
-Indels 0
-
-SNPs not changed 91,688
-SNPs to change ref alt 425,608
-Strand ok 304,711
-Total Strand ok 517,296
-
-Strand to change 303,546
-Total checked 612021
-Total checked Strand 608257
-Total removed for allele Frequency diff > 0.2 38,093
-Palindromic SNPs with Freq > 0.4 289
-
-
-Non Matching alleles 3475
-ID and allele mismatching 97; where 1000G is . 0
-Duplicates removed 112
-
-
-Writing plink commands to: Run-plink.sh
-
-
-awk 'NR > 1 {print "chr"$2"\t"$3-1"\t"$3"\t"$1"\t0\t+"}' 1000GP_Phase3_combined.legend > input.bed
- /research/labs/neurology/fryer/m239830/tools/liftOver input.bed ../hg19ToHg38.over.chain output.bed unlifted.bed
- awk '{print $4"\t"$1"\t"$3"\t"substr($4, index($4, ":")+1)}' output.bed > lifted.legend
-awk '{print $4"\t"$1"\t"$3"\t"substr($4, index($4, ":")+1)}' output.bed > lifted.legend
-
-
-plink --bfile CWOW_n598_GRCh38_updated.clean --exclude Exclude-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP1 --allow-extra-chr
-plink --bfile CWOW_n598_GRCh38_updated.clean  --update-map Chromosome-CWOW_n598_GRCh38_updated.clean-1000G.txt --update-chr --make-bed --out TEMP2 --allow-extra-chr
-plink --bfile TEMP2 --update-map Position-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP3 --allow-extra-chr
-
-plink --bfile TEMP2 --flip Strand-Flip-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP --allow-extra-chr
-plink --bfile TEMP --a2-allele Force-Allele1-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out CWOW_n598_GRCh38_updated.clean-updated --allow-extra-chr
-
 
 # Post imputation 
 Index 
@@ -674,5 +617,4 @@ plink --bfile clean_data --hardy --out hwe_results
 # plink --bfile clean_data --hwe 1e-5 midp --make-bed --out hwe_filtered_data
 
 plink --bfile clean_data --hwe 1e-5 --make-bed --out hwe_filtered_data
-
 ```
