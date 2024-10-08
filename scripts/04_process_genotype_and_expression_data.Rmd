@@ -29,9 +29,9 @@ metadata <- read.delim("../metadata/n580_metadata.txt")
 ```
 
 # Genotype data set up 
-```{r genotype, eval=FALSE}
+```{r genotype, eval=TRUE}
 # Read the raw genotype file
-genotype_raw <- fread("../snp_array/Filtered_n580_CWOW.clean_genotype.raw")
+genotype_raw <- fread("../snp_array/CWOW_flipped.clean_genotype.raw")
 rownames(genotype_raw) <- genotype_raw$IID
 
 # Remove the first six columns (FID, IID, PAT, MAT, SEX, PHENOTYPE)

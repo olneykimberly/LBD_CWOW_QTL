@@ -23,6 +23,7 @@ The protocol is implemented in three main functions:\
 
 Individuals and markers that fail the quality control can subsequently be removed with plinkQC to generate a new, clean dataset.
 
+Input  CWOW_flipped  712,571
 ```{r setup, echo=FALSE, warning=FALSE}
 knitr::opts_knit$set(root.dir = ".")
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE, results='hide', fig.keep='all')
@@ -40,11 +41,11 @@ package.dir <- find.package('plinkQC')
 path2plink <- "../../../../tools/miniconda3/envs/QTL/bin/plink"
 
 # Input directory
-indir <- '../snp_array'
+indir <- '../snp_array/TOPMED_imput'
 # Output directory 
 qcdir <- '../snp_array/post_plinkQC'
 # Name of the SNP array input data 
-name <- 'CWOW_n598_CGRCh38_updated' # CWOW_n598_CGRCh38_updated Filtered_n598_CWOW
+name <- 'final_filtered_data' #  CWOW_n598_GRCh38_updated
 ```
 
 # Per-individual quality control

@@ -133,7 +133,7 @@ for (subset in subsets) {
     output_file_name.cis = output_file_cis,
     snpspos = snp_anno, 
     genepos = gene_info[, c("geneid", "chr", "left", "right")],
-    cisDist = 1e6, 
+    cisDist = 5000, #1e6
     verbose = TRUE,
     pvalue.hist = "qqplot",
     min.pv.by.genesnp = FALSE,

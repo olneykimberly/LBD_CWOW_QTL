@@ -81,7 +81,7 @@ CWOW_snps$V1 <- NULL # remove the column containing the snpids
 snp_ids <- rownames(CWOW_snps) # create a vector of the snpids to add as rownames 
 # colnames(CWOW_snps) # inspect column names 
 rownames(CWOW_snps) <- snp_ids # add snpid as rownames 
-write.table(snp_ids, "../snp_array/snp_ids_GRCh38.txt", sep = "\t", quote = FALSE)
+write.table(snp_ids, "../snp_array/snp_ids_GRCh38.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 ```
 
 # Subset by disease type 
@@ -93,7 +93,7 @@ snp_ids <- read.delim("../snp_array/snp_ids_GRCh38.txt")
 # Define  subsets
 subsets <- list(
   "LBD_control" = c("CONTROL", "LBD_S", "LBD_AS", "LBD_ATS", "LBD_TS"), # all LBD types
-   #"AD_control" = c("CONTROL", "AD"),
+  "AD_control" = c("CONTROL", "AD"),
   "PA_control" = c("CONTROL", "PA"),
   "LBD_S_control" = c("CONTROL", "LBD_S"),
   "LBD_AS_control" = c("CONTROL", "LBD_AS"),

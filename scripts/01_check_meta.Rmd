@@ -48,7 +48,7 @@ A .fam file consists of 6 columns where each row describes one sample:\
 ```{r fam}
 # read in .fam data
 fam <- fread("../snp_array/632_CWOW.fam")
-fam_imputed <- fread("../snp_array/CWOW_TOPMED_Rsq08_QC.fam")
+#fam_imputed <- fread("../snp_array/CWOW_TOPMED_Rsq08_QC.fam")
 
 # Rename columns
 fam <- fam %>%

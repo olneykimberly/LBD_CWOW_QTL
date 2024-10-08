@@ -22,7 +22,6 @@ conda env create -n QTL --file QTL.yml
 # Additionally, the liftover tool will need to be obtained
 # See https://genome.ucsc.edu/cgi-bin/hgLiftOver for instructions. 
 ```
-
 ## Quality control genotype data
 ### Step 1: Match RNAseq samples to samples with SNP array data 
 The output will be a filtered metadata that contains the information on the individuals that have both bulk RNAseq expression data and SNP array data. 
@@ -52,6 +51,12 @@ plink --bfile ../snp_array/Filtered_n598_CWOW \
 
 # Plot the PCA
 R 02_PLINK_population_PCA.Rmd
+```
+Clean up the pca results after creating the PCA plot. These files are no longer needed. 
+```
+rm ../snp_array/Filtered_n598_CWOW_pca_results*
+# move plink logs
+mv ../snp_array/*.log plink_logs
 ```
 The above PCA only contains individuals in the CWOW dataset. The identification of individuals of divergent ancestry can be achieved by combining the genotypes of the the CWOW population with genotypes of a reference dataset consisting of individuals from known ethnicities (for instance individuals from the Hapmap or 1000 genomes study). Below describes how to download the HapMap III data and merge with the CWOW data. 
 
@@ -84,9 +89,10 @@ awk '{print "chr" $1, $4 -1, $4, $2 }' HapMapIII_NCBI36.bim | \
      sed 's/chr23/chrX/' | \
      sed 's/chr24/chrY/' > HapMapIII_NCBI36.tolift
      
-awk '{print "chr" $1, $4 -1, $4, $2 }' Filtered_n598_CWOW.bim | \
+awk '{print "chr" $1, $4 -1, $4, $2 }' ../Filtered_n598_CWOW.bim | \
      sed 's/chr23/chrX/' | \
-     sed 's/chr24/chrY/' > Filtered_n598_CWOW.tolift
+     sed 's/chr24/chrY/' > ../Filtered_n598_CWOW.tolift
+     
 ```
 
 The genome build of HapMap III data is NCBI36. In order to update the HapMap III data to GRCh38, we use the UCSC liftOver tool. The liftOver tool takes information in a format similar to the PLINK .bim format, the UCSC bed format and a liftover chain, containing the mapping information between the old genome (target) and new genome (query). It returns the updated annotation and a file with unmappable variants. 
@@ -98,7 +104,7 @@ in the format <db1>To<Db2>.over.chain.gz. For example, a file named hg19ToHg38.o
 convert hg19 coordinates to hg38. 
 
 ```
-# Download chain    
+# Download chain, be sure to be in the reference folder 
 wget http://hgdownload.cse.ucsc.edu/goldenpath/hg18/liftOver/hg18ToHg38.over.chain.gz
 wget https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz
 
@@ -112,9 +118,9 @@ liftOver HapMapIII_NCBI36.tolift \
          hg18ToHg38.over.chain \
          HapMapIII_CGRCh38 HapMapIII_NCBI36.unMapped
 # Lift over CWOW data 
-liftOver Filtered_n598_CWOW.tolift \
-        reference/hg19ToHg38.over.chain \
-        CWOW_n598_CGRCh38 CWOW_n598_CGRCh38.unMapped
+liftOver ../Filtered_n598_CWOW.tolift \
+        hg19ToHg38.over.chain \
+        ../CWOW_n598_GRCh38 ../CWOW_n598_GRCh38.unMapped
 
 # Ectract mapped variants
 awk '{print $4}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.snps
@@ -126,128 +132,201 @@ awk '{print $4, $3}' HapMapIII_CGRCh38 > HapMapIII_CGRCh38.pos
 plink --bfile HapMapIII_NCBI36 \
       --extract HapMapIII_CGRCh38.snps \
       --update-map HapMapIII_CGRCh38.pos \
-      --make-bed --out HapMapIII_CGRCh38logs
+      --make-bed --out HapMapIII_CGRCh38_updated
 
 ## Repeat for CWOW data 
 # Ectract mapped variants
-awk '{print $4}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.snps
+awk '{print $4}' ../CWOW_n598_GRCh38 > ../CWOW_n598_GRCh38.snps
 # Ectract updated positions
-awk '{print $4, $3}' CWOW_n598_CGRCh38 > CWOW_n598_CGRCh38.pos
+awk '{print $4, $3}' ../CWOW_n598_GRCh38 > ../CWOW_n598_GRCh38.pos
 
 # Update the CWOW data 
 # Extract the mappable variants from the old build and update their position
-plink --bfile Filtered_n598_CWOW \
-      --extract CWOW_n598_CGRCh38.snps \
-      --update-map CWOW_n598_CGRCh38.pos \
-      --make-bed --out CWOW_n598_CGRCh38_updated
+plink --bfile ../Filtered_n598_CWOW \
+      --extract ../CWOW_n598_GRCh38.snps \
+      --update-map ../CWOW_n598_GRCh38.pos \
+      --make-bed --out ../CWOW_n598_GRCh38_updated
 ```
-After the above steps have been completed to liftover, the HapMap III & CWOW data sets can be used for inferring study ancestry as described below. 
+
+clean up by moving log files to the plink_logs folder and removing intermediate files 
+```
+# remove intermediate HapMap files
+rm HapMapIII_NCBI36.hh HapMapIII_NCBI36.bed HapMapIII_NCBI36.fam HapMapIII_NCBI36.bim HapMapIII_NCBI36.tolift HapMapIII_CGRCh38 HapMapIII_NCBI36.unMapped HapMapIII_CGRCh38.snps HapMapIII_CGRCh38.pos
+mv *.log ../plink_logs
+
+# remove intermediate CWOW files
+rm ../Filtered_n598_CWOW* ../CWOW_n598_CGRCh38 ../CWOW_n598_CGRCh38.unMapped ../CWOW_n598_CGRCh38.snps ../CWOW_n598_CGRCh38.pos
+mv ../*.log ../plink_logs
+```
+
+### strand and allele flip correction
+Strand flips and allele flips are common issues encountered in SNP array data when aligning genotypes between different datasets or comparing to a reference panel. These issues arise because SNPs can be represented in different ways depending on the strand or the order of the alleles.
+
+A strand flip occurs when the SNP is read from the opposite DNA strand. For example, an A/T SNP on one strand will appear as a T/A SNP on the complementary strand. If one dataset refers to the forward strand and another to the reverse strand, the SNP may appear as if it has different alleles, leading to discrepancies unless corrected.
+An allele flip refers to cases where the alleles of a SNP are swapped (e.g., A/G versus G/A). Although technically the same SNP, the order of alleles might differ between datasets or when compared to a reference. Allele flips can create inconsistency in analysis, especially when comparing allele frequencies or performing meta-analyses.
+
+We will use PLINK’s --flip option to correct strand flips. The --flip command can be used after generating a strand report with --flip-scan, which detects potential strand flips based on allele frequencies.
+We can use PLINK’s --a1-allele option to ensure allele coding is consistent with a reference.
+Finally, we will compare allele frequencies between our CWOW dataset and a reference panel using PLINK’s --freq command. Large discrepancies might indicate allele mismatches or strand issues.
+We may also want to remove SNPs that don’t match the reference dataset using --extract or --exclude options in PLINK.
+```
+cd ../ # move out of the reference folder and into the snp_array folder 
+
+# Strand flip scan 
+plink --bfile CWOW_n598_CGRCh38_updated --flip-scan --out flip_report
+
+# If a variant ID appears multiple times with different information (e.g., different allele flip types) the variant ID can only appear once 
+awk '!seen[$1]++' flip_report.flipscan > flip_report_unique.flipscan
+
+# Flip correction 
+plink --bfile CWOW_n598_CGRCh38_updated \
+      --flip flip_report_unique.flipscan \
+      --make-bed --out CWOW_n598_CGRCh38_strand_corrected
+
+# Reference alleles
+awk '{print $2, $5}' reference/HapMapIII_CGRCh38_updated.bim > reference/HapMapIII_reference_alleles.txt
+
+# Keep only variants that are in the CWOW data
+awk 'NR==FNR{a[$2]; next} $1 in a' CWOW_n598_CGRCh38_strand_corrected.bim \
+    reference/HapMapIII_reference_alleles.txt > reference/HapMapIII_filtered_reference_alleles.txt
+
+# Correct allele flips by comparing CWOW data to HapMap data 
+plink --bfile CWOW_n598_CGRCh38_strand_corrected \
+      --bmerge reference/HapMapIII_CGRCh38_updated.bed \
+      reference/HapMapIII_CGRCh38_updated.bim \
+      reference/HapMapIII_CGRCh38_updated.fam \
+      --merge-mode 6 --out flip_check
+# The command above will generate a file flip_check.missnp listing SNPs that have potential strand flips or mismatches.
+
+# Fix strand flips using the list of mismatched SNPs flip_check.missnp
+plink --bfile CWOW_n598_CGRCh38_strand_corrected \
+      --flip flip_check.missnp \
+      --make-bed --out CWOW_flipped
+
+# Merge CWOW data with HapMap to ensure allele flipping worked 
+plink --bfile CWOW_flipped \
+      --bmerge reference/HapMapIII_CGRCh38_updated.bed \
+      reference/HapMapIII_CGRCh38_updated.bim \
+      reference/HapMapIII_CGRCh38_updated.fam \
+      --make-bed --out merged_data
+```
+Check output: Next we will ensure that the strand alignment of our CWOW target dataset matches that of the reference dataset. We can compare allele frequencies and manually check or use software like Genotype Harmonizer.
+We will also ensure that SNP identifiers match between our CWOW dataset and the reference. Tools like liftOver or dbSNP can help verify the correct SNP coordinates and annotations.
+
+Clean up 
+```
+mv *.log plink_logs
+mv flip_report* plink_logs
+mv flip_check* plink_logs
+rm CWOW_n598_CGRCh38_updated*
+rm CWOW_n598_CGRCh38_strand_corrected.*
+rm merged_data*
+```
+After the above steps have been completed the HapMap III & CWOW data sets can be used for inferring study ancestry as described below. 
 
 #### Match CWOW genotypes with hapmap reference data
 In order to compute joint principal components of the reference hapmap and the CWOW study population, we’ll need to combine the two datasets. The plink –merge function enables this merge, but requires the variants in the datasets to be matching by chromosome, position and alleles. The following sections show how to extract the relevant data from the reference and study data set and how to filter matching variants, as described [here](https://meyer-lab-cshl.github.io/plinkQC/articles/AncestryCheck.html) in the plinkQC tutorial. 
 
 Filter reference and study data for non A-T or G-C SNPs as these SNPs are more difficult to align and only a subset of SNPs is required for the analysis, we will remove them from both the reference and study data set.
 ```
-cd ../ # Move out of the reference folder and into the snp_array folder 
-
 # Filter hapmap data and create bed file 
 awk 'BEGIN {OFS="\t"}  \
     ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA") \
-    {print $2}' reference/HapMapIII_CGRCh38.bim > reference/HapMapIII_CGRCh38.ac_gt_snps
+    {print $2}' reference/HapMapIII_CGRCh38_updated.bim > reference/HapMapIII_CGRCh38.ac_gt_snps
 
-plink --bfile reference/HapMapIII_CGRCh38 \
+plink --bfile reference/HapMapIII_CGRCh38_updated \
       --exclude reference/HapMapIII_CGRCh38.ac_gt_snps \
       --make-bed --out reference/HapMapIII_CGRCh38.ac_gt_snps.no_ac_gt_snps
 
 # Filter CWOW data and create bed file 
 awk 'BEGIN {OFS="\t"} \
     ($5$6 == "GC" || $5$6 == "CG" || $5$6 == "AT" || $5$6 == "TA") \
-    {print $2}' Filtered_n598_CWOW.bim  > Filtered_n598_CWOW.ac_gt_snps
+    {print $2}' CWOW_flipped.bim  > CWOW_flipped.ac_gt_snps
 
-plink --bfile Filtered_n598_CWOW \
-      --exclude Filtered_n598_CWOW.ac_gt_snps \
-      --make-bed --out Filtered_n598_CWOW.no_ac_gt_snps
+plink --bfile CWOW_flipped \
+      --exclude CWOW_flipped.ac_gt_snps \
+      --make-bed --out CWOW_flipped.no_ac_gt_snps
 ```
 
 #### Prune
 Conduct principle component analysis on genetic variants that are pruned for variants in linkage disequilibrium (LD) with an 𝑟2>0.2 in a 50kb window. The LD-pruned data set is generated below, using plink–indep-pairwise to compute the LD-variants. Additionally exclude range is used to remove genomic ranges of known high-LD structure. This file is available in file.path(find.package('plinkQC'),'extdata','high-LD-regions.txt').
 ```
 # Create prune in file 
-plink --bfile Filtered_n598_CWOW.no_ac_gt_snps \
+plink --bfile CWOW_flipped.no_ac_gt_snps \
       --exclude range reference/high-LD-regions-hg38-GRCh38.txt \
       --indep-pairwise 50 5 0.2 \
-      --out Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps
+      --out CWOW_flipped.no_ac_gt_snps.no_ac_gt_snps
 
 # Create bed file of the newly pruned data
-plink --bfile Filtered_n598_CWOW.no_ac_gt_snps \
-      --extract Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps.prune.in \
+plink --bfile CWOW_flipped.no_ac_gt_snps \
+      --extract CWOW_flipped.no_ac_gt_snps.no_ac_gt_snps.prune.in \
       --make-bed \
-      --out Filtered_n598_CWOW.no_ac_gt_snps.pruned
+      --out CWOW_flipped.no_ac_gt_snps.pruned
 
 # Filter hapmap reference data for the same SNP set as in the CWOW study
-plink --bfile reference/HapMapIII_CGRCh38 \
-      --extract Filtered_n598_CWOW.no_ac_gt_snps.no_ac_gt_snps.prune.in \
+plink --bfile reference/HapMapIII_CGRCh38_updated \
+      --extract CWOW_flipped.no_ac_gt_snps.no_ac_gt_snps.prune.in \
       --make-bed \
-      --out reference/HapMapIII_CGRCh38.pruned
+      --out reference/HapMapIII_CGRCh38_updated.pruned
 ```
 
 Check and correct chromosome mismatch. The following section uses an awk to check that the variant IDs of the reference data have the same chromosome ID as the study data.  Merging the files via PLINK will only work for variants with perfectly matching attributes. For simplicity, and not crucial to the final task of inferring ancestory, we will ignore XY-encoded sex chromosomes (via sed -n '/^[XY]/!p').
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$2]=$1; next} \
     ($2 in a && a[$2] != $1)  {print a[$2],$2}' \
-    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim | \
-    sed -n '/^[XY]/!p' > reference/HapMapIII_CGRCh38.toUpdateChr
+    CWOW_flipped.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38_updated.pruned.bim | \
+    sed -n '/^[XY]/!p' > reference/HapMapIII_CGRCh38_updated.toUpdateChr
 
-plink --bfile reference/HapMapIII_CGRCh38.pruned \
-      --update-chr reference/HapMapIII_CGRCh38.toUpdateChr 1 2 \
+plink --bfile reference/HapMapIII_CGRCh38_updated.pruned \
+      --update-chr reference/HapMapIII_CGRCh38_updated.toUpdateChr 1 2 \
       --make-bed \
-      --out reference/HapMapIII_CGRCh38.updateChr
+      --out reference/HapMapIII_CGRCh38_updated.updateChr
 ```
 
 Position mismatch - Similar to the chromosome matching, we use awk to find variants with mis-matching chromosomal positions
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$2]=$4; next} \
     ($2 in a && a[$2] != $4)  {print a[$2],$2}' \
-    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim > \
-    reference/HapMapIII_CGRCh38.toUpdatePos
+    CWOW_flipped.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38_updated.pruned.bim > \
+    reference/HapMapIII_CGRCh38_updated.toUpdatePos
 ```
 
 Unlike chromosomal and base-pair annotation, mismatching allele-annotations will not only prevent the plink –merge, but also mean that it is likely that actually a different genotype was measured. Initially, we can use the following awk to check if non-matching allele codes are a simple case of allele flips.
 ```
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$1$2$4]=$5$6; next} \
     ($1$2$4 in a && a[$1$2$4] != $5$6 && a[$1$2$4] != $6$5)  {print $2}' \
-    Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.pruned.bim > \
-    reference/HapMapIII_CGRCh38.toFlip
+    CWOW_flipped.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38_updated.pruned.bim > \
+    reference/HapMapIII_CGRCh38_updated.toFlip
 ```
 
 We use plink to update the mismatching positions and possible allele-flips identified above.
 Any alleles that do not match after allele flipping, are identified and removed from the reference dataset.
 ```
-plink --bfile reference/HapMapIII_CGRCh38.updateChr \
-      --update-map reference/HapMapIII_CGRCh38.toUpdatePos 1 2 \
-      --flip reference/HapMapIII_CGRCh38.toFlip \
+plink --bfile reference/HapMapIII_CGRCh38_updated.updateChr \
+      --update-map reference/HapMapIII_CGRCh38_updated.toUpdatePos 1 2 \
+      --flip reference/HapMapIII_CGRCh38_updated.toFlip \
       --make-bed \
-      --out reference/HapMapIII_CGRCh38.flipped
+      --out reference/HapMapIII_CGRCh38_updated.flipped
 
 awk 'BEGIN {OFS="\t"} FNR==NR {a[$1$2$4]=$5$6; next} \
     ($1$2$4 in a && a[$1$2$4] != $5$6 && a[$1$2$4] != $6$5) {print $2}' \
-     Filtered_n598_CWOW.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38.flipped.bim > \
-     reference/HapMapIII_CGRCh38.mismatch
+     CWOW_flipped.no_ac_gt_snps.pruned.bim reference/HapMapIII_CGRCh38_updated.flipped.bim > \
+     reference/HapMapIII_CGRCh38_updated.mismatch
 
-plink --bfile reference/HapMapIII_CGRCh38.flipped \
-      --exclude reference/HapMapIII_CGRCh38.mismatch \
+plink --bfile reference/HapMapIII_CGRCh38_updated.flipped \
+      --exclude reference/HapMapIII_CGRCh38_updated.mismatch \
       --make-bed \
-      --out reference/HapMapIII_CGRCh38.clean
+      --out reference/HapMapIII_CGRCh38_updated.clean
 ```
 ### Merge
 Merge study genotypes and reference data
 The matching study and reference dataset can now be merged into a combined dataset with plink –bmerge. If all steps outlined above were conducted successfully, no mismatch errors should occur.
 ```
 # Merge 
-plink --bfile Filtered_n598_CWOW.no_ac_gt_snps.pruned \
-      --bmerge reference/HapMapIII_CGRCh38.clean.bed \
-               reference/HapMapIII_CGRCh38.clean.bim \
-               reference/HapMapIII_CGRCh38.clean.fam \
+plink --bfile CWOW_flipped.no_ac_gt_snps.pruned \
+      --bmerge reference/HapMapIII_CGRCh38_updated.clean.bed \
+               reference/HapMapIII_CGRCh38_updated.clean.bim \
+               reference/HapMapIII_CGRCh38_updated.clean.fam \
       --make-bed \
       --out merge_HAP_CWOW
 
@@ -259,8 +338,10 @@ plink --bfile merge_HAP_CWOW \
 We can now use the merge_HAP_CWOW_pca.eigenvec file to estimate the ancestry of the CWOW study samples. Identifying individuals of divergent ancestry is implemented in check_ancestry in the R script described below. 
 Before proceeding, clean up the snp_array folder by moving all of the log files to the plink_logs folder
 ```
-mkdir plink_logs
 mv *log plink_logs
+mv reference/*log plink_logs
+rm reference/*ac_gt_snps* reference/HapMapIII_CGRCh38_updated.pruned* reference/*updateChr* reference/*flipped* reference/*.mismatch reference/*toUpdateChr reference/*toUpdatePos reference/*toFlip
+rm *.no_ac_gt_snps*
 ```
 #### Per individual plink QC checks 
 The R script 02_PLINK_QC.Rmd will run the PlinkQC protocol which will implement  three main functions:
@@ -277,33 +358,36 @@ R 02_PLINK_QC.Rmd
 An overview of the results may be viewed [here](https://rpubs.com/olneykimberly/PlinkQC_LBD_CWOW_SNP_array)
 The output is cleaned data that removed individuals and markers that didn't pass the quality control checks as described in the 02_PLINK_QC.Rmd 
 
-There are now 580 individuals that passed QC and 615,293 SNPs. Lets rename the files to reflect that there are now only 580 individuals. 
+There are now 580 individuals that passed QC and 615,293 SNPs. 
 Total number of samples remaining post QC: 580
 Total SNPs remaining post QC: 615,293 before QC was 714,238
 ```
-cd ../snp_array
-mv Filtered_n598_CWOW.clean.hh  Filtered_n580_CWOW.clean.hh
-mv Filtered_n598_CWOW.clean.bed Filtered_n580_CWOW.clean.bed
-mv Filtered_n598_CWOW.clean.fam Filtered_n580_CWOW.clean.fam
-mv Filtered_n598_CWOW.clean.bim Filtered_n580_CWOW.clean.bim
+# clean up 
+cd ../snp_array/
+mv *no_failIDs* post_plinkQC/
+mv *fail* post_plinkQC/
+mv *.log plink_logs/
+mv *.remove* post_plinkQC/
+mv *.prune* post_plinkQC/
+rm CWOW_flipped.sexcheck CWOW_flipped.lmiss CWOW_flipped.imiss CWOW_flipped.het
 ```
-
 
 ### Step 4: Create PCA with the filtered CWOW data
 Create PCA and update metadata file to reflect that there are now 580 individuals 
 ```
 cd ../scripts
 # PCA 
-plink --bfile ../snp_array/Filtered_n580_CWOW.clean \
-      --pca 20 --out ../snp_array/Filtered_n579_CWOW_pca_results
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --pca 20 --out ../snp_array/CWOW_flipped.clean_pca_results
 
 # update metadata
 R 03_update_meta.Rmd
 ```
 ### Step 5: Create genotype file
 ```
-plink --bfile Filtered_n580_CWOW.clean \
-      --recodeA --out Filtered_n580_CWOW.clean_genotype    
+cd ../snp_array
+plink --bfile CWOW_flipped.clean \
+      --recodeA --out CWOW_flipped.clean_genotype    
 ```
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
@@ -317,15 +401,15 @@ R 05a_format_inputs_for_MatrixEQTL.Rmd
 
 # Run matrix eQTL, note that it takes several hours to run. Submit as a background job. 
 R 05b_run_MatrixEQTL.Rmd
+
+# There is also a loop script that will loop through each disease type. 
+05_run_matrixeqlt_loop.R
 ```
 
 ### Step 8: Plot the eQTL results 
 ```
 # eQTL plots for top SNP to gene associations
 R 06_plot_eQTLs.Rmd
-
-# Manhattan plots from GWAS 
-R 07_GWAS.Rmd
 ```
 
 ## GWAS 
@@ -335,10 +419,23 @@ cd ../ # In the main project folder
 mkdir GWAS
 cd GWAS
 
-plink --bfile Filtered_n579_CWOW.clean
-      --linear
-      --out cingLBD_association
-      --pheno covariates_and_phenotype_files/CingLB_phenotypes.txt
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --linear \
+      --out cingLBD_association \
+      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt
+      
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --linear \
+      --out Braak_association \
+      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt
+      
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --linear \
+      --out Thal_association \
+      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt
+      
+# clean up 
+mv *.log ../snp_array/plink_logs
 ```
 
 Make Manhattan plots from GWAS association tests
@@ -359,26 +456,6 @@ wget http://www.well.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.2.7.zip
 wget ftp://ngs.sanger.ac.uk/production/hrc/HRC.r1-1/HRC.r1-1.GRCh37.wgs.mac5.sites.tab.gz
 ```
 
-### strand and allele flip correction
-Strand flips and allele flips are common issues encountered in SNP array data when aligning genotypes between different datasets or comparing to a reference panel. These issues arise because SNPs can be represented in different ways depending on the strand or the order of the alleles.
-
-A strand flip occurs when the SNP is read from the opposite DNA strand. For example, an A/T SNP on one strand will appear as a T/A SNP on the complementary strand. If one dataset refers to the forward strand and another to the reverse strand, the SNP may appear as if it has different alleles, leading to discrepancies unless corrected.
-An allele flip refers to cases where the alleles of a SNP are swapped (e.g., A/G versus G/A). Although technically the same SNP, the order of alleles might differ between datasets or when compared to a reference. Allele flips can create inconsistency in analysis, especially when comparing allele frequencies or performing meta-analyses.
-
-We will use PLINK’s --flip option to correct strand flips. The --flip command can be used after generating a strand report with --flip-scan, which detects potential strand flips based on allele frequencies.
-We can use PLINK’s --a1-allele option to ensure allele coding is consistent with a reference.
-Finally, we will compare allele frequencies between our CWOW dataset and a reference panel using PLINK’s --freq command. Large discrepancies might indicate allele mismatches or strand issues.
-We may also want to remove SNPs that don’t match the reference dataset using --extract or --exclude options in PLINK.
-```
-# STRAND and ALLELE flips 
-plink --bfile Filtered_n580_CWOW.clean --flip-scan --out flip_report
-plink --bfile your_data --flip flip_report.flip --make-bed --out corrected_data
-plink --bfile your_data --a1-allele reference_alleles.txt --make-bed --out consistent_alleles
-```
-Check output: Next we will ensure that the strand alignment of our CWOW target dataset matches that of the reference dataset. We can compare allele frequencies and manually check or use software like Genotype Harmonizer.
-We will also ensure that SNP identifiers match between our CWOW dataset and the reference. Tools like liftOver or dbSNP can help verify the correct SNP coordinates and annotations.
-
-
 ### Generate VCF files from plink files
 TOPMed Imputation Server accepts VCF files compressed with bgzip
 
@@ -386,28 +463,37 @@ TOPMed Imputation Server accepts VCF files compressed with bgzip
 Pre-phase 
 ```
 # create a frequency file
-plink --freq --bfile Filtered_n580_CWOW.clean \
-      --out Filtered_n580_CWOW.clean.frequency
+plink --freq --bfile CWOW_flipped.clean \
+      --out CWOW_flipped.clean.frequency
       
 # Create VCF
-plink --bfile Filtered_n580_CWOW.clean \
+plink --bfile CWOW_n598_GRCh38_updated.clean-updated  \
+      --keep-allele-order \
       --recode vcf \
       --out CWOW
 
+mv *.log plink_logs/
 
 # Sort VCF by genomic position
-bcftools sort CWOW.vcf -o CWOW_sorted.vcf
+bcftools sort CWOW_no_allele_flip.vcf -o CWOW_sorted.vcf
 bgzip CWOW_sorted.vcf
 bcftools index CWOW_sorted.vcf.gz
-bcftools index -s CWOW_sorted.vcf.gz | cut -f1 | sort | uniq > chrom_names.txt
-sh remap_text.sh
-bcftools annotate --rename-chrs rename_map.txt -o renamed_file.vcf.gz -O z CWOW_sorted.vcf.gz
-bcftools index renamed_file.vcf.gz
+#bcftools index -s CWOW_sorted.vcf.gz | cut -f1 | sort | uniq > chrom_names.txt
 
+# Rename chromosome IDs to include "chr"
+bcftools annotate --rename-chrs rename_map.txt -o CWOW_chr_renamed_file.vcf.gz -O z CWOW_sorted.vcf.gz
+bcftools index CWOW_chr_renamed_file.vcf.gz
+
+bcftools norm -d all -o CWOW_no_duplicates.vcf CWOW_chr_renamed_file.vcf.gz
+bcftools view -v snps -o CWOW_no_duplicates_no_indels.vcf CWOW_no_duplicates.vcf
+bcftools view -m2 -M2 -o CWOW_final.vcf CWOW_no_duplicates_no_indels.vcf
+
+bgzip CWOW_final.vcf
+bcftools index CWOW_final.vcf.gz
 
 # Create separate VCFs for each chromosome
 for chr in {1..22} X Y; do
-    bcftools view -r chr$chr renamed_file.vcf.gz -o chr$chr.vcf
+    bcftools view -r chr$chr CWOW_chr_renamed_file.vcf.gz -o chr$chr.vcf
 done
 
 # Compress and index the VCF files
@@ -416,5 +502,177 @@ for chr in {1..22} X Y; do
     tabix -p vcf chr$chr.vcf.gz
 done
 
+
+```
+
+# Extracts
+wget https://www.dropbox.com/s/e5n8yr4n7y91fyp/all_hg38.pgen.zst?dl=1
+wget https://www.dropbox.com/s/cy46f1c8yutd1h4/all_hg38.pvar.zst?dl=1
+wget https://www.dropbox.com/scl/fi/u5udzzaibgyvxzfnjcvjc/hg38_corrected.psam?rlkey=oecjnk4vmbhc8b1p202l0ih4x&dl=1
+
+wget http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.chr{{1..22},X}.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz{,.tbi}
+
+bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%INFO/STRAND\n' your_reference.vcf.gz > reference_strand.txt
+plink --bfile your_snp_data --reference-ref reference_strand.txt --flip strand_flip_list.txt --make-bed --out corrected_snp_data
+bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\n' your_reference.vcf.gz > reference_alleles.txt
+plink --bfile corrected_snp_data --a2-alleles allele_switch_list.txt --make-bed --out final_snp_data
+
+
+bcftools concat -a -O z -o 1k_GRCh38.vcf.gz \
+ALL.chr1.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr2.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr3.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr4.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr5.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr6.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr7.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr8.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr9.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr10.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr11.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr12.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr13.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr14.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr15.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr16.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr17.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr18.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr19.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr20.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr21.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chr22.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz \
+ALL.chrX.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz
+
+
+plink --bfile ../../CWOW_n598_CGRCh38_updated.clean --reference-ref reference_strand.txt --flip strand_flip_list.txt --make-bed --out corrected_snp_data
+
+
+
+
+
+
+
+wget https://www.chg.ox.ac.uk/~wrayner/tools/1000GP_Phase3_combined.legend.gz
+wget https://www.chg.ox.ac.uk/~wrayner/tools/HRC-1000G-check-bim-v4.3.0.zip
+unzip HRC-1000G-check-bim-v4.3.0.zip
+perl HRC-1000G-check-bim.pl -b ../../CWOW_n598_GRCh38_updated.clean.bim -f ../../CWOW.clean.frequency.frq -r GRCh38_1000GP_Phase3_combined.legend -g -p EUR
+
+
+
+
+
+Details written to log file: /research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../LOG-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+
+Creating variant lists
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Force-Allele1-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Strand-Flip-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../ID-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Position-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Chromosome-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../Exclude-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/eagle_1k_reference/../../FreqPlot-CWOW_n598_CGRCh38_updated.clean-1000G.txt
+
+
+Matching to 1000G
+
+Position Matches
+ ID matches 1000G 0
+ ID Doesn't match 1000G 6429
+ Total Position Matches 6429
+ID Match
+ Position different from 1000G 605592
+No Match to 1000G 2891
+Skipped (MT) 269
+Total in bim file 615293
+Total processed 615181
+
+Indels 0
+
+SNPs not changed 91,688
+SNPs to change ref alt 425,608
+Strand ok 304,711
+Total Strand ok 517,296
+
+Strand to change 303,546
+Total checked 612021
+Total checked Strand 608257
+Total removed for allele Frequency diff > 0.2 38,093
+Palindromic SNPs with Freq > 0.4 289
+
+
+Non Matching alleles 3475
+ID and allele mismatching 97; where 1000G is . 0
+Duplicates removed 112
+
+
+Writing plink commands to: Run-plink.sh
+
+
+awk 'NR > 1 {print "chr"$2"\t"$3-1"\t"$3"\t"$1"\t0\t+"}' 1000GP_Phase3_combined.legend > input.bed
+ /research/labs/neurology/fryer/m239830/tools/liftOver input.bed ../hg19ToHg38.over.chain output.bed unlifted.bed
+ awk '{print $4"\t"$1"\t"$3"\t"substr($4, index($4, ":")+1)}' output.bed > lifted.legend
+awk '{print $4"\t"$1"\t"$3"\t"substr($4, index($4, ":")+1)}' output.bed > lifted.legend
+
+
+plink --bfile CWOW_n598_GRCh38_updated.clean --exclude Exclude-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP1 --allow-extra-chr
+plink --bfile CWOW_n598_GRCh38_updated.clean  --update-map Chromosome-CWOW_n598_GRCh38_updated.clean-1000G.txt --update-chr --make-bed --out TEMP2 --allow-extra-chr
+plink --bfile TEMP2 --update-map Position-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP3 --allow-extra-chr
+
+plink --bfile TEMP2 --flip Strand-Flip-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP --allow-extra-chr
+plink --bfile TEMP --a2-allele Force-Allele1-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out CWOW_n598_GRCh38_updated.clean-updated --allow-extra-chr
+
+
+# Post imputation 
+Index 
+```
+for chr in {1..22} X; do
+    tabix -p vcf chr$chr.dose.vcf.gz
+done
+```
+
+merge
+```
+bcftools concat -a -O z -o CWOW_TOPMED_imputed.vcf.gz \
+chr1.dose.vcf.gz \
+chr2.dose.vcf.gz \
+chr3.dose.vcf.gz \
+chr4.dose.vcf.gz \
+chr5.dose.vcf.gz \
+chr6.dose.vcf.gz \
+chr7.dose.vcf.gz \
+chr8.dose.vcf.gz \
+chr9.dose.vcf.gz \
+chr10.dose.vcf.gz \
+chr11.dose.vcf.gz \
+chr12.dose.vcf.gz \
+chr13.dose.vcf.gz \
+chr14.dose.vcf.gz \
+chr15.dose.vcf.gz \
+chr16.dose.vcf.gz \
+chr17.dose.vcf.gz \
+chr18.dose.vcf.gz \
+chr19.dose.vcf.gz \
+chr20.dose.vcf.gz \
+chr21.dose.vcf.gz \
+chr22.dose.vcf.gz \
+chrX.dose.vcf.gz
+```
+
+remove of duplicates, indels and multiallelic variants 
+```
+plink --bfile CWOW_TOPMED_imputed --list-duplicate-vars --out duplicates
+plink --bfile CWOW_TOPMED_imputed --exclude duplicates.dupvar --make-bed --out data_no_dups
+plink --bfile data_no_dups --snps-only just-acgt --make-bed --out data_no_indels
+plink --bfile data_no_indels --biallelic-only strict --make-bed --out clean_data
+plink --bfile data_no_indels --biallelic-only strict --make-bed --out clean_data
+```
+
+HWE  HWE p < 1 x 10-5
+```
+plink --bfile clean_data --hardy --out hwe_results
+# To filter for controls (recommended for case/control studies), add the midp option:
+# plink --bfile clean_data --hwe 1e-5 midp --make-bed --out hwe_filtered_data
+
+plink --bfile clean_data --hwe 1e-5 --make-bed --out hwe_filtered_data
 
 ```
