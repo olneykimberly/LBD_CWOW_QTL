@@ -444,7 +444,7 @@ Make Manhattan plots from GWAS association tests
 R 07_GWAS.Rmd
 ```
 
-## Impute genotypes
+## Format files for imputing 
 The above was completed for the clean unimputed genotypes. Now that we have clean genotypes from unrelated individuals, we will impute genotypes following the TOPMed impute protocol. https://topmedimpute.readthedocs.io/en/latest/prepare-your-data/
 
 If you use the Imputation TOPMed Server, cite:
@@ -509,47 +509,77 @@ perl HRC-1000G-check-bim.pl \
 # 1000G population will default to ALL if not specified. Most samples in CWOW are self reported white. 
 # Writing plink commands to: Run-plink.sh
 ```
-### Run-plink.sh
-```
-plink --bfile CWOW_n598_GRCh38_updated.clean --exclude Exclude-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP1 --allow-extra-chr
-plink --bfile CWOW_n598_GRCh38_updated.clean  --update-map Chromosome-CWOW_n598_GRCh38_updated.clean-1000G.txt --update-chr --make-bed --out TEMP2 --allow-extra-chr
-plink --bfile TEMP2 --update-map Position-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP3 --allow-extra-chr
-plink --bfile TEMP2 --flip Strand-Flip-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out TEMP --allow-extra-chr
-plink --bfile TEMP --a2-allele Force-Allele1-CWOW_n598_GRCh38_updated.clean-1000G.txt --make-bed --out CWOW_n598_GRCh38_updated.clean-updated --allow-extra-chr
+### Run-plink.sh to correct strand and allele flips against the 1000GP
+Strand flips and allele flips are common issues encountered in SNP array data when aligning genotypes between different datasets or comparing to a reference panel. These issues arise because SNPs can be represented in different ways depending on the strand or the order of the alleles.
 
-```
+A strand flip occurs when the SNP is read from the opposite DNA strand. For example, an A/T SNP on one strand will appear as a T/A SNP on the complementary strand. If one dataset refers to the forward strand and another to the reverse strand, the SNP may appear as if it has different alleles, leading to discrepancies unless corrected. An allele flip refers to cases where the alleles of a SNP are swapped (e.g., A/G versus G/A). Although technically the same SNP, the order of alleles might differ between datasets or when compared to a reference. Allele flips can create inconsistency in analysis, especially when comparing allele frequencies or performing meta-analyses.
 
-### Generate VCF files from plink files
-TOPMed Imputation Server accepts VCF files compressed with bgzip
-
-Pre-phase 
+We will use PLINK’s --flip option to correct strand flips. The --flip command can be used after generating a strand report with --flip-scan, which detects potential strand flips based on allele frequencies. We can use PLINK’s --a1-allele option to ensure allele coding is consistent with a reference. Finally, we will compare allele frequencies between our CWOW dataset and a reference panel using PLINK’s --freq command. Large discrepancies might indicate allele mismatches or strand issues. We may also want to remove SNPs that don’t match the reference dataset using --extract or --exclude options in PLINK.
 ```
-# create a frequency file
-plink --freq --bfile CWOW_flipped.clean \
-      --out CWOW_flipped.clean.frequency
+# Exclude individuals
+plink --bfile CWOW_n598_GRCh38_updated.clean \
+      --exclude Exclude-CWOW_n598_GRCh38_updated.clean-1000G.txt \
+      --make-bed --out TEMP1 --allow-extra-chr
+
+# Update chromosomes
+plink --bfile CWOW_n598_GRCh38_updated.clean \
+      --update-map Chromosome-CWOW_n598_GRCh38_updated.clean-1000G.txt \
+      --update-chr --make-bed --out TEMP2 --allow-extra-chr
+
+# Update positions       
+plink --bfile TEMP2 \
+      --update-map Position-CWOW_n598_GRCh38_updated.clean-1000G.txt 
+      --make-bed --out TEMP3 --allow-extra-chr
       
+# Strand flip
+plink --bfile TEMP2 \
+      --flip Strand-Flip-CWOW_n598_GRCh38_updated.clean-1000G.txt \
+      --make-bed --out TEMP --allow-extra-chr
+
+# Allele flip      
+plink --bfile TEMP \
+      --a2-allele Force-Allele1-CWOW_n598_GRCh38_updated.clean-1000G.txt \
+      --make-bed --out CWOW_n598_GRCh38_updated.clean-updated --allow-extra-chr
+```
+
+### Prepare CWOW plink files for impuation 
+TOPMed Imputation Server accepts VCF files compressed with bgzip. CWOW variants are in plink format and will need to be converted to VCF.
+```
 # Create VCF
 plink --bfile CWOW_n598_GRCh38_updated.clean-updated  \
       --keep-allele-order \
       --recode vcf \
       --out CWOW
-
+# clean up
 mv *.log plink_logs/
 
 # Sort VCF by genomic position
-bcftools sort CWOW_no_allele_flip.vcf -o CWOW_sorted.vcf
-bgzip CWOW_sorted.vcf
-bcftools index CWOW_sorted.vcf.gz
-#bcftools index -s CWOW_sorted.vcf.gz | cut -f1 | sort | uniq > chrom_names.txt
+bcftools sort CWOW_no_allele_flip.vcf\
+        -o CWOW_sorted.vcf
 
-# Rename chromosome IDs to include "chr"
-bcftools annotate --rename-chrs rename_map.txt -o CWOW_chr_renamed_file.vcf.gz -O z CWOW_sorted.vcf.gz
+# zip 
+bgzip CWOW_sorted.vcf
+
+# index 
+bcftools index CWOW_sorted.vcf.gz
+
+# obtain chromosome names 
+bcftools index -s CWOW_sorted.vcf.gz\
+         | cut -f1 | sort | uniq > chrom_names.txt
+
+# rename chromosome IDs to include "chr"
+bcftools annotate \
+         --rename-chrs rename_map.txt\
+         -o CWOW_chr_renamed_file.vcf.gz -O z CWOW_sorted.vcf.gz
+# index
 bcftools index CWOW_chr_renamed_file.vcf.gz
 
+# filter to exclude duplications, indels, and retain only biallelic SNPs
 bcftools norm -d all -o CWOW_no_duplicates.vcf CWOW_chr_renamed_file.vcf.gz
 bcftools view -v snps -o CWOW_no_duplicates_no_indels.vcf CWOW_no_duplicates.vcf
 bcftools view -m2 -M2 -o CWOW_final.vcf CWOW_no_duplicates_no_indels.vcf
 
+# compress & index
 bgzip CWOW_final.vcf
 bcftools index CWOW_final.vcf.gz
 
@@ -565,7 +595,22 @@ for chr in {1..22} X Y; do
 done
 ```
 
-# Post imputation 
+## Imputation via TOPMed
+Go to https://imputation.biodatacatalyst.nhlbi.nih.gov/#! and create an account. Login and then select Run Genotype Imputation (Minimac4) 2.0.0-beta3. \
+Input SNPs: 614955\
+Number of samples: 580\
+Chromosomes: 1 10 11 12 13 14 15 16 17 18 19 2 20 21 22 3 4 5 6 7 8 9 X\
+Name: CWOW \
+reference panel: TopMed r3\
+Array build: GRCh38\
+rsq Filter:0.2\
+Phasing:eagle\
+Population:all\
+Mode:impuation\
+Submit job
+
+
+### Post imputation 
 Index 
 ```
 for chr in {1..22} X; do
