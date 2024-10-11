@@ -607,7 +607,9 @@ rsq Filter:0.2\
 Phasing:eagle\
 Population:all\
 Mode:impuation\
-Submit job
+Submit job\
+
+The outputted imputed variants 
 
 
 ### Post imputation 
