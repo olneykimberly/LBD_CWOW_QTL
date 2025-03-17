@@ -52,7 +52,7 @@ fam <- fread("../snp_array/632_CWOW.fam")
 
 # Rename columns
 fam <- fam %>%
-  rename(
+  dplyr::rename(
     FID = V1,
     IID = V2, 
     MID = V3,
