@@ -37,10 +37,10 @@ A .fam file consists of 6 columns where each row describes one sample:\
 5. Sex (1=Male,2=Female,-9=Unknown)\
 6. phenotype (1=Control, 2=Case, -9=Unknown)\
 ```{r fam_pca}
-fam <- fread("../snp_array/CWOW_flipped.clean.fam",  header = FALSE)
+fam <- fread("../snp_array/TOPMED_imput/final_filtered_data.fam",  header = FALSE)
 # Rename columns
 fam <- fam %>%
-  rename(
+  dplyr::rename(
     FID = V1,
     IID = V2, 
     MID = V3,
@@ -48,12 +48,12 @@ fam <- fam %>%
     Sex = V5,
     Pheno = V6
   )
-pca <- fread("../snp_array/CWOW_flipped.clean_pca_results.eigenvec",  header = FALSE)
+pca <- fread("../snp_array/TOPMED_imput/final_filtered_data.pca_results.eigenvec",  header = FALSE)
 # Keep only the first 5 PCs and the first two columns FID and IID 
 pca_subset <- pca[, 1:7]
 # Rename columns
 pca_subset <- pca_subset %>%
-  rename(
+  dplyr::rename(
     FID = V1,
     IID = V2, 
     PC1 = V3,
@@ -69,35 +69,35 @@ pca_subset <- pca_subset %>%
 covariates <- merge(pca_subset, meta_phenos, by = "IID")
 covariates$FID.y <- NULL # repeated and okay to remove
 covariates <- covariates %>%
-  rename(
+  dplyr::rename(
     FID = IID,
     IID = FID.x, 
     Sex = Sex.x)
 covariates$MID <- NULL # Missing maternal and paternal information so remove these columns
 covariates$PID <- NULL
 
-write.table(covariates, "../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes.txt", row.names = FALSE, sep = "\t",  quote = FALSE)
+write.table(covariates, "../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt", row.names = FALSE, sep = "\t",  quote = FALSE)
 
 # Braak NFT 
 covariates$Braak.NFT <- as.numeric(covariates$Braak.NFT)
 braak <- covariates[, c(1:2,10)]
-write.table(braak, "../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt", row.names = FALSE, quote = FALSE, sep = "\t")
+write.table(braak, "../snp_array/covariates_and_phenotype_files/Braak_phenotypes_imputed.txt", row.names = FALSE, quote = FALSE, sep = "\t")
 
 # Thal
 covariates$Thal.amyloid <- as.numeric(covariates$Thal.amyloid)
 Thal <- covariates[, c(1:2,11)]
-write.table(Thal, "../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt", row.names = FALSE,  quote = FALSE, sep = "\t")
+write.table(Thal, "../snp_array/covariates_and_phenotype_files/Thal_phenotypes_imputed.txt", row.names = FALSE,  quote = FALSE, sep = "\t")
 
 # Lewy body count 
 covariates$Cing.LB <- as.numeric(covariates$Cing.LB)
 LB <- covariates[, c(1:2,12)]
-write.table(LB, "../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt", row.names = FALSE, quote = FALSE, sep = "\t")
+write.table(LB, "../snp_array/covariates_and_phenotype_files/CingLB_phenotypes_imputed.txt", row.names = FALSE, quote = FALSE, sep = "\t")
 ```
 
 # Output updated metadata 
 ```{r meta}
 n580_meta <- subset(meta, IID %in% pca_subset$IID)
-write.table(n580_meta, "../metadata/n580_metadata.txt", quote = FALSE, row.names = FALSE, sep = "\t")
+write.table(n580_meta, "../metadata/n580_metadata_imputed.txt", quote = FALSE, row.names = FALSE, sep = "\t")
 ```
 
 

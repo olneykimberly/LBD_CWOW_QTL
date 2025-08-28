@@ -665,3 +665,117 @@ plink --bfile clean_data --hardy --out hwe_results
 
 plink --bfile clean_data --hwe 1e-5 --make-bed --out hwe_filtered_data
 ```
+
+  --bfile hwe_filtered_data
+  --maf 0.01
+  --make-bed
+  --out final_filtered_data
+#--------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------
+
+### Step 4: Create PCA with the filtered CWOW data
+Create PCA and update metadata file to reflect that there are now 580 individuals 
+```
+cd snp_array/TOPMED_imput/
+# PCA 
+plink --bfile ../snp_array/TOPMED_imput/hwe_filtered_data \
+      --pca 20 --out ../snp_array/TOPMED_imput/hwe_filtered_data.pca_results
+
+# update metadata
+R 03_update_meta_imputed.Rmd
+```
+### Step 5: Create genotype file
+```
+cd ../snp_array/TOPMED_imput/
+plink --bfile final_filtered_data \
+      --recodeA --out test_genotype    
+```
+### Step 6: Update metadata file, counts data, and genotype file 
+```
+awk '{gsub(/ /,"\t"); print}' final_filtered_data.genotype.raw > output_file.txt
+salloc --mem=200G --cpus-per-task=4 --time=2:00:00
+
+datamash transpose < output_file.txt > transposed_data.txt
+sed -e '1d; 3,6d' transposed_data.txt > ../final_filtered_data.genotype_formatted.txt
+
+R 04_process_impute_genotype.Rmd
+```
+# Get SNP annotation
+sh get_GRCh38_SNP_annotations.sh # downloads the dbSNP NCBI All_20180418.vcf.gz
+tabix -p vcf All_20180418.vcf.gz # index 
+bcftools view -m2 -M2 All_20180418.vcf.gz > All_20180418_biallelic_output.vcf.gz # get only biallelic sites 
+
+
+### Step 7: Run Matrix eQTL 
+Firstly, the files will need some additional formatting. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
+```
+# Format the inputs 
+R 05a_format_inputs_for_MatrixEQTL.Rmd
+
+# Run matrix eQTL, note that it takes several hours to run. Submit as a background job. 
+R 05b_run_MatrixEQTL.Rmd
+
+# There is also a loop script that will loop through each disease type. 
+05_run_matrixeqlt_loop.R
+```
+
+### Step 8: Plot the eQTL results 
+```
+# eQTL plots for top SNP to gene associations
+R 06_plot_eQTLs.Rmd
+```
+
+## GWAS 
+Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. 
+```
+cd ../ # In the main project folder
+mkdir GWAS
+cd GWAS
+
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --linear \
+      --out cingLBD_association \
+      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt
+      
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --linear \
+      --out Braak_association \
+      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt
+      
+plink --bfile ../snp_array/CWOW_flipped.clean \
+      --linear \
+      --out Thal_association \
+      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt
+      
+# clean up 
+mv *.log ../snp_array/plink_logs
+```
+
+Make Manhattan plots from GWAS association tests
+```
+# Manhattan plots from GWAS 
+R 07_GWAS.Rmd
+```
+
+# get sig
+awk -F'\t' 'NR==1 {for (i=1; i<=NF; i++) if ($i=="FDR") col=i} NR>1 && $col < 0.001' /Users/kolney/ASU\ Dropbox/Kimberly\ Olney/CWOW_data/eQTL/outputs/MatrixEQTL/cis_eQTL_AD_control > /Users/kolney/ASU\ Dropbox/Kimberly\ Olney/CWOW_data/eQTL/outputs/MatrixEQTL/cis_eQTL_AD_control_sig  
+
+
+
+# Get SNP annotation file
+dbSNP (NCBI)
+Download the latest VCF file for human SNPs from dbSNP.
+Use bcftools or tabix to extract relevant fields.
+Convert it into a table format similar to your Illumina annotation
+https://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/All_20180418.vcf.gz 
+bcftools query -f '%ID\t%CHROM\t%POS\t%REF,%ALT\n' All_20180418.vcf.gz > dbsnp_GRCh38.tsv
+
+# colocalisation 
+https://hanruizhang.github.io/GWAS-eQTL-Colocalization/ 

@@ -2,17 +2,8 @@
 # I.e only run matrix eQTL for the AD and control samples
 
 # Setup
-setwd("/research/labs/neurology/fryer/m239830/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
-
-library(dplyr)
-library(data.table)
-library(MatrixEQTL)
-library(tidyverse)
-
-saveToPDF <- function(...) {
-  d = dev.copy(pdf, ...)
-  dev.off(d)
-}
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
+source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/", "file_paths_and_colours.R"))
 
 #-------------------------------
 # Read inputs for Matrix eQTL 
@@ -36,11 +27,11 @@ colnames(gene_info) <- c("geneid","chr", "left", "right") # Rename the columns
 # SNP annotation
 #------------
 # The SNP annotation was download from the illumina website and lifted over to GRCh38
-snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated_liftover_GRCh38.txt", 
+snp_anno <- fread("../snp_array/reference/NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv", 
                   header = TRUE,  fill = TRUE)
+
 snp_anno <- snp_anno[,c(6,1,2)] # Keep 
 colnames(snp_anno) <- c("snpid","chr", "pos") # rename the columns 
-
 #------------
 # Matrix eQTL thresholds
 #------------
@@ -70,9 +61,9 @@ subsets <- c(
 for (subset in subsets) {
   
   # Define input file paths based on the subset
-  snp_file <- paste0("../snp_array/Filtered_n580_CWOW_genotype_data_", subset, ".txt")
-  gene_file <- paste0("../RNA_counts/n580_TPM_combat_adjusted_counts_log2_", subset, ".txt")
-  cvrt_file <- paste0("../snp_array/covariates_and_phenotype_files/covariates_", subset, ".txt")
+  snp_file <- paste0("../snp_array/Filtered_n580_CWOW_genotype_data_", subset, "_imputed.txt")
+  gene_file <- paste0("../RNA_counts/n580_TPM_combat_adjusted_counts_log2_", subset, "_imputed.txt")
+  cvrt_file <- paste0("../snp_array/covariates_and_phenotype_files/covariates_", subset, "_imputed.txt")
   
   # Load SNP data
   snps <- SlicedData$new()
@@ -118,8 +109,8 @@ for (subset in subsets) {
   threshold <- 0.05/lower.bound
   
   # Define output file paths
-  output_file_trans <- file.path("../MatrixEQTL/", paste0("trans_eQTL_", subset, "_imputed"))
-  output_file_cis <- file.path("../MatrixEQTL/", paste0("cis_eQTL_", subset, "_imputed"))
+  output_file_trans <- file.path("../MatrixEQTL/", paste0("trans_eQTL_", subset, "_imputed_modelLINEAR_CROSS"))
+  output_file_cis <- file.path("../MatrixEQTL/", paste0("cis_eQTL_", subset, "_imputed_modelLINEAR_CROSS"))
   
   # Run the eQTL analysis
   dis_me <- Matrix_eQTL_main(
@@ -133,7 +124,7 @@ for (subset in subsets) {
     output_file_name.cis = output_file_cis,
     snpspos = snp_anno, 
     genepos = gene_info[, c("geneid", "chr", "left", "right")],
-    cisDist = 5000, #1e6
+    cisDist = 1e6, #1e6 1 million
     verbose = TRUE,
     pvalue.hist = "qqplot",
     min.pv.by.genesnp = FALSE,
@@ -161,7 +152,7 @@ for (subset in subsets) {
   )
   
   # Save the results table as a CSV file named according to the subset
-  output_table <- paste0("../MatrixEQTL/summary_", subset, "_imputed.txt")
+  output_table <- paste0("../MatrixEQTL/summary_", subset, "_imputed_modelLINEAR_CROSS.txt")
   write.table(results, file = output_table, row.names = FALSE, quote = FALSE)
   
 }

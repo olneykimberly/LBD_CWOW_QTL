@@ -1,35 +1,22 @@
----
-title: "Format inputs for Matrix eQTL"
-author: "Kimberly Olney, Ph.D."
-date: "07/30/2024"
-output:
-  html_document:
-    df_print: paged
-  pdf_document: default
-params:
-  args: myarg
----
-
-# Setup
-```{r setup}
-knitr::opts_knit$set(root.dir = ".")
+## ----setup------------------------------------------------------------------------------------------------------------
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
+source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/", "file_paths_and_colours.R"))
 library(dplyr)
 library(data.table)
 library(MatrixEQTL)
 library(tidyverse)
-```
+library(rtracklayer)
+library(GenomicRanges)
 
-# Expression data 
-```{r expression_data}
+## ----expression_data--------------------------------------------------------------------------------------------------
 expression_data <- fread("../RNA_counts/n580_TPM_combat_adjusted_counts_log2.txt")
 # Set the row names using the first column and remove it from the data frame
 rownames(expression_data) <- expression_data$V1
 expression_data$V1 <- NULL
 column_order <- colnames(expression_data)
-```
 
-# Covariates 
-```{r covariates_data}
+
+## ----covariates_data--------------------------------------------------------------------------------------------------
 covar <- read.delim("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes.txt")
 meta <- read.delim("../metadata/n580_metadata.txt")
 
@@ -69,12 +56,11 @@ table(df$TYPE.ATS)
 df$TYPE <- NULL
 df$TYPE.ATS <- factor(df$TYPE.ATS, levels=c("CONTROL", "PA", "AD", "LBD_S", "LBD_TS", "LBD_AS", "LBD_ATS"))
 table(df$TYPE.ATS) # inspect
-```
 
-# Genotype data
-```{r genotype_data}
+
+## ----genotype_data----------------------------------------------------------------------------------------------------
 # Read in the genotype file. A zero indicates the individual is homozygous reference, a 1 is heterozygous, a 2 is homozygous alternate 
-CWOW_snps <- fread("../snp_array/final_filtered_data.genotype_formatted.txt") 
+CWOW_snps <- fread("../snp_array/imputed_genotype_table.txt") 
 CWOW_snps$IID <- sub("_.*", "", CWOW_snps$IID) # remove the allele information in the snpid 
 
 # add .2 only to the second occurrence of each duplicate (leaving the first as is)
@@ -89,14 +75,9 @@ snp_ids <- rownames(CWOW_snps) # create a vector of the snpids to add as rowname
 # colnames(CWOW_snps) # inspect column names 
 rownames(CWOW_snps) <- snp_ids # add snpid as rownames 
 write.table(snp_ids, "../snp_array/imputed_snp_ids_GRCh38.txt", sep = "\t", quote = FALSE, row.names = FALSE)
-```
 
-rownames(CWOW_snps)  <- CWOW_snps$IID # set as rownames 
-Warning: non-unique values when setting 'row.names': ‘rs113704896’, ‘rs114401114’, ‘rs116755276’, ‘rs117719368’, ‘rs118018829’, ‘rs139035671’, ‘rs140007644’, ‘rs140396430’, ‘rs143230660’, ‘rs143555752’, ‘rs145286361’, ‘rs146521585’, ‘rs147451708’, ‘rs148232691’, ‘rs149468450’, ‘rs149590273’, ‘rs150660771’, ‘rs17008299’, ‘rs17748129’, ‘rs182411002’, ‘rs55916431’, ‘rs62063077’, ‘rs71415100’, ‘rs72768231’, ‘rs73044185’, ‘rs73608236’, ‘rs78998751’, ‘rs79457354’, ‘rs80031906’, ‘rs9783626’Error in `.rowNamesDF<-`(x, value = value) : 
-  duplicate 'row.names' are not allowed
 
-# Subset by disease type 
-```{r subset}
+## ----subset-----------------------------------------------------------------------------------------------------------
 # Next we need the sample IDs (aka the IIDs) to be the columns and the rows to be the covariates
 # This section reformats the data frame & subsets by disease type 
 snp_ids <- read.delim("../snp_array/imputed_snp_ids_GRCh38.txt")
@@ -167,49 +148,36 @@ for (subset_name in names(subsets)) {
   snp_output_file <- paste0("../snp_array/Filtered_n580_CWOW_genotype_data_", subset_name, "_imputed.txt")
   write.table(CWOW_snps_reordered, snp_output_file, sep = " ", quote = FALSE)
 }
-```
 
-# SNP and gene information 
-```{r SNP_and_gene_data}
+
+## ----SNP_and_gene_data------------------------------------------------------------------------------------------------
 # Read in gene information. These are the genes used in the bulk RNAseq differential expression analysis.
 genes <- fread("../RNA_counts/genes_filtered.txt")
 gene_info <- genes[,c(1:4)] # Keep only columns 1 - 4
 colnames(gene_info) <- c("geneid","chr", "left", "right") # Rename the columns 
 
 # Read in SNP annotation
-# The SNP annotation was download from the illumina website 
-snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated.txt", 
+# The SNP annotation was download from the dbSNP NCBI website 
+# The vcf file was processed using a python script to obtain chromosome, position, SNP id, and gene name
+snp_anno <- fread("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/reference/SNP_positions_with_gene.tsv", 
                   header = TRUE,  fill = TRUE)
-snp_anno$gene <- sub(",.*", "", snp_anno$`Gene(s)`) # create a gene column 
-#snp_anno <- snp_anno[,c(1:3)] # Keep only columns 1 - 3
-#colnames(snp_anno) <- c("snpid","chr", "pos") # rename the columns 
-```
-
-# Lift SNP annotation to GRCh38
-```{r lift_snp_annotation}
-library(rtracklayer)
-library(GenomicRanges)
-
-chain <- import.chain("../snp_array/reference/hg19ToHg38.over.chain")
+# Make an alleles column 
+snp_anno$Alleles <- paste(snp_anno$REF, snp_anno$ALT, sep = "/")
 
 # Convert snp annotation to GRanges object
 gr <- GRanges(
-  seqnames = paste0("chr", snp_anno$Chr),
-  ranges = IRanges(start = snp_anno$MapInfo, end = snp_anno$MapInfo),
-  names = snp_anno$Name,
+  seqnames = paste0("chr", snp_anno$`#CHROM`),
+  ranges = IRanges(start = snp_anno$POS, end = snp_anno$POS),
+  names = snp_anno$ID,
   alleles = snp_anno$Alleles, 
-  Transcript = snp_anno$`Transcript(s)`, 
-  Gene = snp_anno$`Gene(s)`, 
-  In_exon = snp_anno$`In-exon`,
-  Mutation = snp_anno$`Mutation(s)`, 
-  gene = snp_anno$gene
-)
+  Gene = snp_anno$GENE
+  )
 
+# Lift SNP annotation to GRCh38
+chain <- import.chain("../snp_array/reference/hg19ToHg38.over.chain")
 lifted <- liftOver(gr, chain)
 lifted_gr <- unlist(lifted)
 
 GRCh38_snp_annotation <- as.data.frame(lifted_gr)
-write.table(GRCh38_snp_annotation,"../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated_liftover_GRCh38.txt", sep = "\t", quote = FALSE, row.names = FALSE)
-```
-
-
+write.table(GRCh38_snp_annotation,"../snp_array/reference/NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+#------ End

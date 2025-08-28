@@ -1,7 +1,7 @@
 ---
 title: "plot GWAS"
 author: "Kimberly Olney, Ph.D."
-date: "07/30/2024"
+date: "March 2025"
 output:
   html_document:
     df_print: paged
@@ -12,23 +12,15 @@ params:
 # Setup
 ```{r setup}
 knitr::opts_knit$set(root.dir = ".")
-library(dplyr)
-library(data.table)
-library(MatrixEQTL)
-library(ggplot2)
-library(qqman)
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
+source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/", "file_paths_and_colours.R"))
 library(ggmanh)
-
-saveToPDF <- function(...) {
-  d = dev.copy(pdf, ...)
-  dev.off(d)
-}
 ```
 
 # Read SNP annotation
 ```{r omni}
-snp_anno <- fread("../snp_array/illumina_OminExpress24/InfiniumOmniExpress-24v1-3_A1.annotated_liftover_GRCh38.txt", header = TRUE,  fill=TRUE)
-snp_anno$gene <- sub(",.*", "", snp_anno$`Gene`) # create a gene column 
+snp_anno <- fread("../snp_array/reference/NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv", header = TRUE,  fill=TRUE)
+snp_anno$gene <- snp_anno$Gene # create a gene column 
 snp_anno$SNP <- snp_anno$names # create a SNP column for downstream matching 
 ```
 
@@ -36,20 +28,23 @@ snp_anno$SNP <- snp_anno$names # create a SNP column for downstream matching
 ### GWAS 
 ```{r read_gwas_results}
 # Read in GWAS file 
-gwas <- fread("../snp_array/cingLBD_association_imputed.assoc.linear")
+gwas <- fread("../snp_array/associations_with_imputed_snps/cingLBD_association_imputed.assoc.linear")
+
+# Combine with snp annotation file and reformat 
+gwas_snp <- merge(gwas, snp_anno, by = "SNP")
+chr_labels <- c(1:22, "X")
 ```
 
 ### ggmanh
 ```{r}
-gwas$CHR[is.na(gwas$CHR)] <- "X"
-chr_labels <- c(1:22, "X")
-gwas$CHR <- factor(gwas$CHR, levels = chr_labels)
+gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
+gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
 chr_colors <- c("navyblue", "skyblue2")
 
-gwas$label <-  ifelse(gwas$P < 0.00001, gwas$SNP, NA)
+gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
 
-subset(gwas, SNP == "rs3857059")
-g <- manhattan_plot(x = gwas, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Cingulate Lewy body count", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
+g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Cingulate Lewy body count", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
+
 g
 saveToPDF("../results/gwas/manhattan_plot_Cingulate_LB_count_imputed.pdf", width = 8, height = 4.5)
 ```
@@ -58,42 +53,23 @@ saveToPDF("../results/gwas/manhattan_plot_Cingulate_LB_count_imputed.pdf", width
 ### GWAS 
 ```{r read_gwas_results}
 # Read in GWAS file 
-getwd()
-gwas <- fread("snp_array/Thal_association_imputed.assoc.linear")
+gwas <- fread("../snp_array/associations_with_imputed_snps/Thal_association_imputed.assoc.linear")
 
 # Combine with snp annotation file and reformat 
 gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-# Filter out chromosomes 0 and 25
-gwas_snp <- gwas_snp[gwas_snp$CHR != 0 & gwas_snp$CHR != 25, ]
-
-# Convert chromosome labels to numeric values for plotting
-# Use 23 for X, 24 for Y, and 25 for MT
-gwas_snp$CHR[gwas_snp$CHR == "X"] <- 23
-gwas_snp$CHR[gwas_snp$CHR == "Y"] <- 24
-gwas_snp$CHR <- as.numeric(gwas_snp$CHR)
-
-# Define chromosome labels for the plot
+levels(factor(gwas_snp$CHR))
 chr_labels <- c(1:22, "X")
 ```
 
 ### ggmanh
 ```{r}
 gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
-gwas_snp$CHR[gwas_snp$CHR == 24] <- "Y"
 gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
-
-gwas$CHR[is.na(gwas$CHR)] <- "X"
-table(is.na(gwas$CHR))
-
-
-chr_labels <- c(1:22, "X")
-gwas$CHR <- factor(gwas$CHR, levels = chr_labels)
-
 chr_colors <- c("navyblue", "skyblue2")
 
-gwas$label <-  ifelse(gwas$P < 0.00001, gwas$SNP, NA)
+gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
 
-g <- manhattan_plot(x = gwas, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Thal amyloid phase", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
+g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Thal amyloid phase", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
 g
 saveToPDF("../results/gwas/manhattan_plot_Thal_amyloid_phase_imputed.pdf", width = 8, height = 4.5)
 ```
@@ -102,27 +78,17 @@ saveToPDF("../results/gwas/manhattan_plot_Thal_amyloid_phase_imputed.pdf", width
 ### GWAS 
 ```{r read_gwas_results}
 # Read in GWAS file 
-gwas <- fread("../GWAS/Braak_association.assoc.linear")
+gwas <- fread("../snp_array/associations_with_imputed_snps/Braak_association_imputed.assoc.linear")
 
 # Combine with snp annotation file and reformat 
 gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-# Filter out chromosomes 0 and 25
-gwas_snp <- gwas_snp[gwas_snp$CHR != 0 & gwas_snp$CHR != 25, ]
-
-# Convert chromosome labels to numeric values for plotting
-# Use 23 for X, 24 for Y, and 25 for MT
-gwas_snp$CHR[gwas_snp$CHR == "X"] <- 23
-gwas_snp$CHR[gwas_snp$CHR == "Y"] <- 24
-gwas_snp$CHR <- as.numeric(gwas_snp$CHR)
-
-# Define chromosome labels for the plot
-chr_labels <- c(1:22, "X", "Y")
+levels(factor(gwas_snp$CHR))
+chr_labels <- c(1:22, "X")
 ```
 
 ### ggmanh
 ```{r}
 gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
-gwas_snp$CHR[gwas_snp$CHR == 24] <- "Y"
 gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
 chr_colors <- c("navyblue", "skyblue2")
 
@@ -130,7 +96,7 @@ gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
 
 g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Braak NFT stage", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
 g
-saveToPDF("../results/gwas/manhattan_plot_Braak_NFT_stage.pdf", width = 8, height = 4.5)
+saveToPDF("../results/gwas/manhattan_plot_Braak_NFT_stage_imputed.pdf", width = 8, height = 4.5)
 ```
 
 

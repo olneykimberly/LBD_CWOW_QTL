@@ -1,0 +1,98 @@
+---
+title: "SNP array metadata plots"
+author: "Kimberly Olney, Ph.D."
+date: "08/06/2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+params:
+  args: myarg
+---
+
+# Setup
+```{r setup}
+knitr::opts_knit$set(root.dir = ".")
+library(dplyr)
+library(data.table)
+library(ggplot2)
+saveToPDF <- function(...) {
+  d = dev.copy(pdf, ...)
+  dev.off(d)
+}
+
+# Read in metadata filtered metadata file 
+metadata <- read.delim("../metadata/n579_metadata.txt")
+```
+
+# Bar plot of sample count within each neuropathology stage/phase/count
+```{r plot_neuropathology_sample_count}
+Thal_bar <- ggplot(metadata, aes(Thal.amyloid, after_stat(count))) +
+  geom_bar(fill = "maroon") +
+  theme_bw() +
+  xlab("Thal amyloid phase") +
+  ggtitle("Sample count within each Thal amyloid phase") +
+  geom_text(
+    stat = 'count',
+    aes(label = after_stat(count)),
+    vjust = 1.6,
+    color = "white",
+    size = 3.5
+  ) +
+    theme_bw() + 
+  scale_x_continuous(breaks = 0:5) 
+Thal_bar
+
+
+Braak_bar <- ggplot(metadata, aes(Braak.NFT, after_stat(count))) +
+  geom_bar(fill = "navy") +
+  theme_bw() +
+  xlab("Braak NFT stage") +
+  ggtitle("Sample count within each Braak NFT stage") +
+  geom_text(
+    stat = 'count',
+    aes(label = after_stat(count)),
+    vjust = 1.6,
+    color = "white",
+    size = 3.5
+  ) +
+    theme_bw() + 
+  scale_x_continuous(breaks = 0:6) 
+Braak_bar
+
+
+metadata$Cing.LB.group <- cut(
+  metadata$Cing.LB,
+  breaks = c(-Inf, 0, 10, 20, 30, 40, Inf),  # Define the breaks for ranges
+  labels = c("0", "1-10", "11-20", "21-30", "31-40", "41+"),  # Define labels for each range
+  right = TRUE,  # Include the right endpoint in the intervals
+  include.lowest = TRUE  # Ensure the lowest value (0) is included in the intervals
+)
+
+Cing_bar <- ggplot(metadata, aes(Cing.LB.group, after_stat(count))) +
+  geom_bar(fill = "gold3") +
+  theme_bw() +
+  xlab("Cingulate Lewy body count") +
+  ggtitle("Sample count within each cingulate Lewy body ") +
+  geom_text(
+    stat = 'count',
+    aes(label = after_stat(count)),
+    vjust = 1.6,
+    color = "black",
+    size = 3.5
+  ) +
+    theme_bw() #+ 
+ # scale_x_continuous(breaks = 0:6) 
+Cing_bar
+```
+```{r save_plots}
+Thal_bar
+saveToPDF("../results/metadata_plots/Thal_sample_count.pdf", width = 4.5, height = 4.5)
+
+Cing_bar
+saveToPDF("../results/metadata_plots/cingulateLB_sample_count.pdf", width = 4.5, height = 4.5)
+
+Braak_bar
+saveToPDF("../results/metadata_plots/BraakNFT_sample_count.pdf", width = 4.5, height = 4.5)
+```
+

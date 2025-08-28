@@ -31,28 +31,28 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE, results='hid
 #install_github("meyer-lab-cshl/plinkQC")
 library(plinkQC)
 library(ggplot2) # save plots via ggsave
-Sys.setenv(RSTUDIO_PANDOC="/usr/local/biotools/pandoc/3.1.2/bin")
+#Sys.setenv(RSTUDIO_PANDOC="/usr/local/biotools/pandoc/3.1.2/bin")
 ```
 
 ```{r params, echo=FALSE}
 # Path to plinkQC package
 package.dir <- find.package('plinkQC')
 # Path to plink tool 
-path2plink <- "../../../../tools/miniconda3/envs/QTL/bin/plink"
+path2plink <- "/tgen_labs/jfryer/kolney/tools/miniconda3/envs/QTL/bin/plink"
 
 # Input directory
 indir <- '../snp_array/TOPMED_imput'
 # Output directory 
-qcdir <- '../snp_array/imputed_post_plinkQC'
+qcdir <- '../snp_array/final_imputed_post_plinkQC'
 # Name of the SNP array input data 
-name <- 'final_filtered_data' #  CWOW_n598_GRCh38_updated
+name <- 'hwe_filtered_data' #  CWOW_n598_GRCh38_updated
 ```
 
 # Per-individual quality control
 PerIndividualQC writes a list of all fail individual IDs to the qcdir. These IDs will be removed in the computation of the perMarkerQC
 
 The HapMapIII and CWOW data were merged prior to running plinkQC. See the README for more information on how the HapMapIII reference data was obtained.
-```{r individual_qc, eval=TRUE}
+```{r individual_qc, eval=FALSE}
 prefixMergedDataset <- c("merge_HAP_CWOW_pca") 
 
 fail_individuals <- perIndividualQC(indir=indir, 
@@ -137,7 +137,7 @@ The identification of individuals of divergent ancestry can be achieved by combi
 Principal component analysis (PCA) on the combined genotype panel is employed to detect population structure, matching the granularity of the reference dataset. The tool check_ancestry is used to identify individuals with divergent ancestry. check_ancestry utilizes information from principal components 1 and 2 to determine the center of the European reference samples. Study samples with a Euclidean distance from this center that exceeds a specified radius are classified as non-European.
 
 The default radius is 1.5. For this dataset, to retain more individuals, a radius of 5 was selected. 
-```{r ancestry_check}
+```{r ancestry_check, eval = FALSE}
 # Merged CWOW and HapMap data
 prefixMergedDataset <- c("merge_HAP_CWOW_pca") 
 
