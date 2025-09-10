@@ -1,8 +1,10 @@
 # CWOW LBD QTL study
-Expression quantitative trait loci (eQTL)
-
 SNP array data available on Synapse: syn51238188\
-Bulk RNAseq expressiond data available on Synapse: syn52394100
+Bulk RNAseq expressiond data available on Synapse: syn52394100\
+
+Abstract:\
+Lewy body disease (LBD) and Alzheimer's disease (AD) are two of the most common neurodegenerative disorders. LBD is primarily marked by the accumulation of α-synuclein aggregates (Lewy bodies), often accompanied by amyloid-β (Aβ) plaques and neurofibrillary tangles (NFTs), which are the hallmark of AD. The APOE ε4 allele is associated with an increased risk of developing AD and LBD. Additionally, variants in SNCA and LRRK2 are linked to a higher risk of developing Lewy body pathology in AD patients. Building on these established associations, we tested the hypothesis that genomic variants significantly contribute to gene dysregulation across neuropathologies. We employed an integrative genomic approach, combining bulk RNA sequencing and SNP array data from n = 580 neuropathologically defined cases, to better understand the molecular mechanisms underlying these neuropathologies. Through eQTL (expression quantitative trait loci) analysis, we identified LBD-associated cis-eQTLs that were involved in pathways related to thiamine metabolism, which is critical for maintaining neuronal energy balance. Additionally, top LBD-associated cis-eQTL were enriched in pathways related to programmed cell death, suggesting a role for apoptosis and cellular regulation in the pathogenesis of LBD. Another significant finding was the identification of APOE as the top hit in a genome-wide association study (GWAS) analyzing the Thal amyloid phase in the cingulate cortex, further supporting its known role in amyloid deposition.
+Conclusion: In conclusion, our eQTL analysis underscores the importance of regulatory variants in shaping the transcriptional landscape of these diseases, thereby providing a deeper understanding of the genetic mechanisms underlying neurodegeneration.
 
 ## Set up conda environment
 This workflow uses conda. For information on how to install conda may be found  [here](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html)
@@ -28,6 +30,7 @@ The output will be a filtered metadata that contains the information on the indi
 ```
 cd scripts # All commands below assume you are in the scripts folder. 
 R 01_check_meta.Rmd
+# output ../metadata/filtered_metadata.txt
 ```
 
 ### Step 2: Remove excluded IIDs
@@ -38,7 +41,9 @@ plink --bfile ../snp_array/632_CWOW \
       --make-bed --out ../snp_array/Filtered_n598_CWOW
 
 # inspect filtering
-wc -l  ../snp_array/Filtered_n598_CWOW.fam # there should be 598
+wc -l  ../snp_array/Filtered_n598_CWOW.fam # there should be 598 
+
+# Filtered n598 files were moved to preprocessing_snp_array_before_imputation
 ```
 
 ### Step 3: Quality control 
@@ -50,15 +55,17 @@ plink --bfile ../snp_array/Filtered_n598_CWOW \
       --out ../snp_array/Filtered_n598_CWOW_pca_results
 
 # Plot the PCA
-R 02_PLINK_population_PCA.Rmd
+R 02_PLINK_population_PCA.Rmd 
+# output is results/pca/CWOW_pca_dim1&2.pdf and dim2&3.pds
 ```
-Clean up the pca results after creating the PCA plot. These files are no longer needed. 
+
+Clean up the pca files after creating the PCA plot. These files are no longer needed. 
 ```
 rm ../snp_array/Filtered_n598_CWOW_pca_results*
 # move plink logs
 mv ../snp_array/*.log plink_logs
 ```
-The above PCA only contains individuals in the CWOW dataset. The identification of individuals of divergent ancestry can be achieved by combining the genotypes of the the CWOW population with genotypes of a reference dataset consisting of individuals from known ethnicities (for instance individuals from the Hapmap or 1000 genomes study). Below describes how to download the HapMap III data and merge with the CWOW data. 
+The above PCA only contains individuals in the CWOW dataset. The identification of individuals of divergent ancestry can be achieved by combining the genotypes of the the CWOW population with genotypes of a reference dataset consisting of individuals from known ethnicity (for instance individuals from the Hapmap or 1000 genomes study). Below describes how to download the HapMap III data and merge with the CWOW data. 
 
 #### Reference HAPMAP data 
 Following the tutorial outlined in plinkQC HapMap [here](https://meyer-lab-cshl.github.io/plinkQC/articles/HapMap.html)
@@ -146,6 +153,8 @@ plink --bfile ../Filtered_n598_CWOW \
       --extract ../CWOW_n598_GRCh38.snps \
       --update-map ../CWOW_n598_GRCh38.pos \
       --make-bed --out ../CWOW_n598_GRCh38_updated
+      
+# Note - CWOW_n598_GRCh38_updated files were moved to preprocessing_snp_array_before_imputation/ folder 
 ```
 
 clean up by moving log files to the plink_logs folder and removing intermediate files 
@@ -664,39 +673,38 @@ plink --bfile clean_data --hardy --out hwe_results
 # plink --bfile clean_data --hwe 1e-5 midp --make-bed --out hwe_filtered_data
 
 plink --bfile clean_data --hwe 1e-5 --make-bed --out hwe_filtered_data
+# Files moved to TOPMED_imput/intermediate_files_rm_dups_indels_multi_allele
 ```
 
-  --bfile hwe_filtered_data
-  --maf 0.01
-  --make-bed
-  --out final_filtered_data
-#--------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------
+Minor allele frequency (MAF)
+```
+plink --bfile clean_data --hardy --out hwe_results
+# To filter for controls (recommended for case/control studies), add the midp option:
+# plink --bfile clean_data --hwe 1e-5 midp --make-bed --out hwe_filtered_data
 
-#--------------------------------------------------------------------------------
-
-#--------------------------------------------------------------------------------
-
-#--------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------
+plink --bfile hwe_filtered_data --maf 0.01 --make-bed --out final_filtered_data
+# Files moved to TOPMED_imput/intermediate_files_rm_dups_indels_multi_allele
+```
 
 ### Step 4: Create PCA with the filtered CWOW data
 Create PCA and update metadata file to reflect that there are now 580 individuals 
 ```
 cd snp_array/TOPMED_imput/
 # PCA 
-plink --bfile ../snp_array/TOPMED_imput/hwe_filtered_data \
-      --pca 20 --out ../snp_array/TOPMED_imput/hwe_filtered_data.pca_results
+plink --bfile ../snp_array/TOPMED_imput/final_filtered_data \
+      --pca 20 --out ../snp_array/TOPMED_imput/final_filtered_data.pca_results
 
 # update metadata
 R 03_update_meta_imputed.Rmd
 ```
+
 ### Step 5: Create genotype file
 ```
 cd ../snp_array/TOPMED_imput/
 plink --bfile final_filtered_data \
-      --recodeA --out test_genotype    
+      --recodeA --out final_filtered_data.genotype    
 ```
+
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
 awk '{gsub(/ /,"\t"); print}' final_filtered_data.genotype.raw > output_file.txt
@@ -707,11 +715,14 @@ sed -e '1d; 3,6d' transposed_data.txt > ../final_filtered_data.genotype_formatte
 
 R 04_process_impute_genotype.Rmd
 ```
+
 # Get SNP annotation
+
+```
 sh get_GRCh38_SNP_annotations.sh # downloads the dbSNP NCBI All_20180418.vcf.gz
 tabix -p vcf All_20180418.vcf.gz # index 
 bcftools view -m2 -M2 All_20180418.vcf.gz > All_20180418_biallelic_output.vcf.gz # get only biallelic sites 
-
+```
 
 ### Step 7: Run Matrix eQTL 
 Firstly, the files will need some additional formatting. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
@@ -767,7 +778,14 @@ R 07_GWAS.Rmd
 # get sig
 awk -F'\t' 'NR==1 {for (i=1; i<=NF; i++) if ($i=="FDR") col=i} NR>1 && $col < 0.001' /Users/kolney/ASU\ Dropbox/Kimberly\ Olney/CWOW_data/eQTL/outputs/MatrixEQTL/cis_eQTL_AD_control > /Users/kolney/ASU\ Dropbox/Kimberly\ Olney/CWOW_data/eQTL/outputs/MatrixEQTL/cis_eQTL_AD_control_sig  
 
+# Transcription factor information 
+https://genome.ucsc.edu/cgi-bin/hgTables?db=hg38&hgta_group=regulation&hgta_track=jaspar&hgta_table=jaspar2024&hgta_doSchema=describe+table+schema 
+```
+wget https://hgdownload.soe.ucsc.edu/gbdb/hg38/jaspar/JASPAR2024.bb 
 
+# convert to bed
+bigBedToBed JASPAR2024.bb JASPAR2024.bed
+```
 
 # Get SNP annotation file
 dbSNP (NCBI)
@@ -779,3 +797,36 @@ bcftools query -f '%ID\t%CHROM\t%POS\t%REF,%ALT\n' All_20180418.vcf.gz > dbsnp_G
 
 # colocalisation 
 https://hanruizhang.github.io/GWAS-eQTL-Colocalization/ 
+
+
+# VEP
+https://useast.ensembl.org/info/docs/tools/vep/script/index.html
+ 
+Key: https://useast.ensembl.org/info/genome/variation/prediction/predicted_data.html
+ 
+install
+```
+git clone https://github.com/Ensembl/ensembl-vep.git
+cd ensembl-vep
+perl INSTALL.pl
+```
+
+Get human reference 
+```
+cd $HOME/.vep
+curl -O https://ftp.ensembl.org/pub/release-114/variation/indexed_vep_cache/homo_sapiens_vep_114_GRCh38.tar.gz
+tar xzf homo_sapiens_vep_114_GRCh38.tar.gz
+```
+
+run VEP 
+```
+cat NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv | cut -f6 > snp_rs.txt
+/tgen_labs/jfryer/kolney/tools/ensembl-vep/./vep -i snp_rs.txt --cache
+```
+
+# notes
+https://www.nature.com/articles/s41416-018-0018-9
+https://www.colonomics.org/data-browser/eqtl-browser/
+https://useast.ensembl.org/info/docs/tools/vep/vep_formats.html#output
+https://useast.ensembl.org/info/genome/variation/prediction/predicted_data.html
+https://htseq.readthedocs.io/en/master/tutorials/tss.html
