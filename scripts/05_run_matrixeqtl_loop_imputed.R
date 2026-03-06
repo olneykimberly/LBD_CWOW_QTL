@@ -22,7 +22,6 @@ source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/",
 genes <- fread("../RNA_counts/genes_filtered.txt")
 gene_info <- genes[,c(1:4)] # Keep only columns 1 - 4
 colnames(gene_info) <- c("geneid","chr", "left", "right") # Rename the columns 
-
 #------------
 # SNP annotation
 #------------
@@ -109,8 +108,8 @@ for (subset in subsets) {
   threshold <- 0.05/lower.bound
   
   # Define output file paths
-  output_file_trans <- file.path("../MatrixEQTL/", paste0("trans_eQTL_", subset, "_imputed_modelLINEAR_CROSS"))
-  output_file_cis <- file.path("../MatrixEQTL/", paste0("cis_eQTL_", subset, "_imputed_modelLINEAR_CROSS"))
+  output_file_trans <- file.path("../MatrixEQTL/", paste0("trans_eQTL_", subset, "_imputed_modelLINEAR_CROSS_5kb"))
+  output_file_cis <- file.path("../MatrixEQTL/", paste0("cis_eQTL_", subset, "_imputed_modelLINEAR_CROSS_5kb"))
   
   # Run the eQTL analysis
   dis_me <- Matrix_eQTL_main(
@@ -124,7 +123,7 @@ for (subset in subsets) {
     output_file_name.cis = output_file_cis,
     snpspos = snp_anno, 
     genepos = gene_info[, c("geneid", "chr", "left", "right")],
-    cisDist = 1e6, #1e6 1 million
+    cisDist = 5000, #1e6 1 million
     verbose = TRUE,
     pvalue.hist = "qqplot",
     min.pv.by.genesnp = FALSE,
@@ -152,7 +151,7 @@ for (subset in subsets) {
   )
   
   # Save the results table as a CSV file named according to the subset
-  output_table <- paste0("../MatrixEQTL/summary_", subset, "_imputed_modelLINEAR_CROSS.txt")
+  output_table <- paste0("../MatrixEQTL/summary_", subset, "_imputed_modelLINEAR_CROSS_5Kb.txt")
   write.table(results, file = output_table, row.names = FALSE, quote = FALSE)
   
 }

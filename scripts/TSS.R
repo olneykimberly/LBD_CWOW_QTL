@@ -2,6 +2,8 @@
 library(dplyr)
 library(readr)
 library(ggplot2)
+#install.packages('data.table')
+library(data.table)
 setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
 
 # --- 1. Load the data ---
@@ -50,13 +52,13 @@ merged_data <- merged_data %>%
 # `geom_histogram` creates the bars, and `geom_vline` adds the vertical line
 
 merged_data_q01 <- merged_data %>%
-  filter(FDR <= 0.01)
+  filter(FDR <= 0.01) 
 
-ggplot(merged_data_q01 , aes(x = distance_kb)) +
+ggplot(merged_data , aes(x = distance_kb)) +
   geom_histogram(bins = 100, fill = "skyblue", color = "black") +
   geom_vline(aes(xintercept = 0), color = "red", linetype = "dashed", size = 1) +
   labs(
-    title = "Distribution of cis-eQTLs Relative to TSS",
+    title = "Distribution of cis-eQTLs relative to TSS",
     x = "Distance from TSS (Kb)",
     y = "Frequency"
   ) +
