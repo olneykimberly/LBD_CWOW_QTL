@@ -1,121 +1,74 @@
 ---
-title: "plot GWAS"
+title: "GWAS Visualization"
 author: "Kimberly Olney, Ph.D."
-date: "March 2025"
-output:
-  html_document:
-    df_print: paged
-  pdf_document: default
-params:
-  args: myarg
+date: "March 2026"
+output: html_document
 ---
-# Setup
-```{r setup}
-knitr::opts_knit$set(root.dir = ".")
-setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
-source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/", "file_paths_and_colours.R"))
+
+# Set up
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = ".")
+# Set paths and libraries
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
+library(data.table)
 library(ggmanh)
+library(qqman)
+library(ggplot2)
+
+# Load SNP annotation once
+snp_anno <- fread("../snp_array/reference/NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv")
+snp_anno[, `:=`(gene = Gene, SNP = names)] # Efficient column creation in data.table
+chr_labels <- c(1:22)
 ```
 
-# Read SNP annotation
-```{r omni}
-snp_anno <- fread("../snp_array/reference/NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv", header = TRUE,  fill=TRUE)
-snp_anno$gene <- snp_anno$Gene # create a gene column 
-snp_anno$SNP <- snp_anno$names # create a SNP column for downstream matching 
-```
-
-# Cing LB
-### GWAS 
-```{r read_gwas_results}
-# Read in GWAS file 
-gwas <- fread("../snp_array/associations_with_imputed_snps/cingLBD_association_imputed.assoc.linear")
-
-# Combine with snp annotation file and reformat 
-gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-chr_labels <- c(1:22, "X")
-```
-
-### ggmanh
+# Define a function to process, plot, and save results
 ```{r}
-gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
-gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
-chr_colors <- c("navyblue", "skyblue2")
+process_gwas <- function(file_path, trait_name, colors, output_prefix) {
+  # 1. Load and Merge
+  gwas <- fread(file_path)
+  gwas_snp <- merge(gwas, snp_anno, by = "SNP")
+  gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
+  
+  # 2. Prepare Labels
+  gwas_snp$label <- ifelse(gwas_snp$P < 1e-5, gwas_snp$gene, NA)
+  
+  # 3. Manhattan Plot
+  man_plot <- manhattan_plot(
+    x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP",
+    plot.title = paste("GWAS", trait_name), y.label = "-log10(p-value)",
+    chr.col = colors, label.colname = "label", label.font.size = 2.75,
+    highlight.colname = "label", highlight.col = "black"
+  )
+  print(man_plot)
+  ggsave(paste0("../results/gwas/manhattan_", output_prefix, ".pdf"), 
+         plot = man_plot, width = 8, height = 4.5)
 
-gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
-
-g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Cingulate Lewy body count", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
-
-g
-saveToPDF("../results/gwas/manhattan_plot_Cingulate_LB_count_imputed.pdf", width = 8, height = 4.5)
+  # 4. QQ Plot
+  pdf(paste0("../results/gwas/qq_", output_prefix, ".pdf"), width = 5, height = 5)
+  qqman::qq(gwas_snp$P, main = paste("QQ Plot:", trait_name), 
+            pch = 18, col = colors[1], cex = 1.5, las = 1)
+  dev.off()
+  
+  # Show QQ in RMarkdown
+  qqman::qq(gwas_snp$P, main = paste("QQ Plot:", trait_name), col = colors[1])
+}
 ```
 
-# Thal
-### GWAS 
-```{r read_gwas_results}
-# Read in GWAS file 
-gwas <- fread("../snp_array/associations_with_imputed_snps/Thal_association_imputed.assoc.linear")
-
-# Combine with snp annotation file and reformat 
-gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-levels(factor(gwas_snp$CHR))
-chr_labels <- c(1:22, "X")
-```
-
-### ggmanh
+# Define GWAS tasks: list(file, title, colors, filename_suffix)
 ```{r}
-gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
-gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
-chr_colors <- c("navyblue", "skyblue2")
+tasks <- list(
+  list("../snp_array/associations_with_imputed_snps/Braak_association_imputed_covar_adj.assoc.linear", 
+       "Braak NFT Stage", c("navyblue", "skyblue2"), "Braak"),
+  
+  list("../snp_array/associations_with_imputed_snps/Thal_association_imputed.assoc.linear", 
+       "Thal Amyloid Phase", c("#741551ff", "#dbabbcff"), "Thal"),
+  
+  list("../snp_array/associations_with_imputed_snps/CingLB_association_imputed_covar_adj.assoc.linear", 
+       "Cingulate Lewy Body Count", c("gold3", "grey3"), "CingLB")
+)
 
-gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
-
-g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Thal amyloid phase", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
-g
-saveToPDF("../results/gwas/manhattan_plot_Thal_amyloid_phase_imputed.pdf", width = 8, height = 4.5)
-```
-
-# Braak
-### GWAS 
-```{r read_gwas_results}
-# Read in GWAS file 
-gwas <- fread("../snp_array/associations_with_imputed_snps/Braak_association_imputed.assoc.linear")
-
-# Combine with snp annotation file and reformat 
-gwas_snp <- merge(gwas, snp_anno, by = "SNP")
-levels(factor(gwas_snp$CHR))
-chr_labels <- c(1:22, "X")
-```
-
-### ggmanh
-```{r}
-gwas_snp$CHR[gwas_snp$CHR == 23] <- "X"
-gwas_snp$CHR <- factor(gwas_snp$CHR, levels = chr_labels)
-chr_colors <- c("navyblue", "skyblue2")
-
-gwas_snp$label <-  ifelse(gwas_snp$P < 0.00001, gwas_snp$gene, NA)
-
-g <- manhattan_plot(x = gwas_snp, pval.colname = "P", chr.colname = "CHR", pos.colname = "BP", plot.title = "GWAS Braak NFT stage", y.label = "-log10(p-value)", chr.col = chr_colors, label.colname = "label", label.font.size = 2.75, highlight.colname = "label", highlight.col = c("black")) 
-g
-saveToPDF("../results/gwas/manhattan_plot_Braak_NFT_stage_imputed.pdf", width = 8, height = 4.5)
-```
-
-
-# Manhattan
-```{r manhattan_default}
-# Manhattan plot and show significant SNPs
-sig <- subset(gwas_snp, P < 0.00001)
-snpsOfInterest <- sig$SNP
-manhattan(gwas_snp, highlight = snpsOfInterest)
-
-
-# Show only chromosome 19 
-manhattan(subset(gwas_snp, CHR == 19), main = "Chr 19")
-# Show only X chromosome
-manhattan(subset(gwas_snp, CHR == 23), main = "Chr X")
-```
-
-# QQplot
-```{r qqplot_pvalue}
-qq(gwas_snp$P, main = "Q-Q plot of GWAS p-values", xlim = c(0, 7), ylim = c(0,
-    12), pch = 18, col = "blue4", cex = 1.5, las = 1)
+# Execute for each task
+for (task in tasks) {
+  process_gwas(task[[1]], task[[2]], task[[3]], task[[4]])
+}
 ```

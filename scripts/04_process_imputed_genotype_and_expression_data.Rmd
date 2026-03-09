@@ -1,7 +1,7 @@
 ---
 title: "Process genotype file"
 author: "Kimberly Olney, Ph.D."
-date: "March 2025"
+date: "March 2026"
 output:
   html_document:
     df_print: paged
@@ -12,7 +12,9 @@ params:
 
 # Setup
 ```{r setup}
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 knitr::opts_knit$set(root.dir = ".")
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
 source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/", "file_paths_and_colours.R"))
 # Read in metadata filtered metadata file 
 metadata <- read.delim("../metadata/n580_metadata.txt")
@@ -20,14 +22,13 @@ metadata <- read.delim("../metadata/n580_metadata.txt")
 
 # Genotype data set up 
 ```{r genotype, eval=FALSE}
-install.packages("duckdb")
 library(duckdb)
-con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")  # Use in-memory DB (or specify file path for persistence)
+#con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")  # Use in-memory DB (or specify file path for persistence)
 # Load file into DuckDB as a virtual table without loading it fully into memory
-large_data <- dbGetQuery(con, "CREATE OR REPLACE TABLE large_table AS SELECT * FROM read_csv_auto('../snp_array/TOPMED_imput/transposed_data.txt')")
+#large_data <- dbGetQuery(con, "CREATE OR REPLACE TABLE large_table AS SELECT * FROM read_csv_auto('../snp_array/TOPMED_imput/transposed_data.txt')")
 
 # Read the raw genotype file
-genotype_raw <- fread("../snp_array/TOPMED_imput/final_filtered_data.genotype.raw")
+genotype_raw <- fread("../snp_array/TOPMED_imput/gwas_filtered_data.clean_genotype.raw")
 rownames(genotype_raw) <- genotype_raw$IID
 
 # Remove the first six columns (FID, IID, PAT, MAT, SEX, PHENOTYPE)
@@ -39,7 +40,7 @@ genotype_data <- t(genotype_data)
 colnames(genotype_data) <- genotype_raw$IID
 
 # Save the formatted data to a file
-write.table(genotype_data, file = "../snp_array/final_filtered_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
+write.table(genotype_data, file = "../snp_array/gwas_filtered_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
 ```
 
 # Gene length

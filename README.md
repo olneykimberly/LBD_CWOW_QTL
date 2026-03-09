@@ -24,6 +24,7 @@ conda env create -n QTL --file QTL.yml
 # Additionally, the liftover tool will need to be obtained
 # See https://genome.ucsc.edu/cgi-bin/hgLiftOver for instructions. 
 ```
+
 ## Quality control genotype data
 ### Step 1: Match RNAseq samples to samples with SNP array data 
 The output will be a filtered metadata that contains the information on the individuals that have both bulk RNAseq expression data and SNP array data. 
@@ -392,12 +393,28 @@ plink --bfile ../snp_array/CWOW_flipped.clean \
 # update metadata
 R 03_update_meta.Rmd
 ```
-### Step 5: Create genotype file
+
+### Step 5: Further clean and create genotype file
+| Filter                     | Threshold                             |
+| -------------------------- | ------------------------------------- |
+| Minor allele frequency     | `MAF ≥ 0.05`                          |
+| Missingness                | `geno ≤ 0.05`                         |
+| Hardy–Weinberg equilibrium | `HWE ≥ 1e-6` (controls)               |
 ```
 cd ../snp_array
-plink --bfile CWOW_flipped.clean \
-      --recodeA --out CWOW_flipped.clean_genotype    
+# create a final clean genotype file for all downstream data analysis
+plink --bfile TOPMED_imput/final_filtered_data \
+      --maf 0.05 \
+      --geno 0.05 \
+      --hwe 1e-6 \
+      --make-bed \
+      --out TOPMED_imput/gwas_filtered_data
+
+plink --bfile TOPMED_imput/gwas_filtered_data \
+      --recodeA --out TOPMED_imput/gwas_filtered_data.clean_genotype    
+
 ```
+
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
 R 04_process_genotype.Rmd
@@ -422,35 +439,127 @@ R 06_plot_eQTLs.Rmd
 ```
 
 ## GWAS 
-Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. 
+Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. Model adjustes for covariates PC1-5 to account for population ancestry differences and age and sex. 
 ```
-cd ../ # In the main project folder
-mkdir GWAS
-cd GWAS
+cd ../ # In the scripts project folder
 
-plink --bfile ../snp_array/CWOW_flipped.clean \
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
       --linear \
-      --out cingLBD_association \
-      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt
+      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Braak_association_imputed_covar_adj
       
-plink --bfile ../snp_array/CWOW_flipped.clean \
-      --linear \
-      --out Braak_association \
-      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt
       
-plink --bfile ../snp_array/CWOW_flipped.clean \
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
       --linear \
-      --out Thal_association \
-      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt
+      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Thal_association_imputed_covar_adj
+
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/CingLB_association_imputed_covar_adj
+
+# Pheno is disease status
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Sex, Pheno \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Age_association_imputed_covar_adj
       
 # clean up 
 mv *.log ../snp_array/plink_logs
 ```
 
+Additionally, we will use a logistic to look at GWAS associated with disease status (Pheno) and sex. Disease status and sex are given values of 1 or 2. Males are 1 and females are 2. For disease, controls and PA are 1 while LBD and AD are 2. 
+```
+# GWAS of disease status: controls/PA (1) vs AD/LBD cases (2)
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --logistic \
+      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --pheno-name Pheno \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1,PC2,PC3,PC4,PC5,Age,Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/GWAS_DiseaseStatus_Control_vs_Case
+      
+# GWAS of sex-biased disease SNPs
+## Females only
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --logistic \
+      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --pheno-name Pheno \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age \
+      --filter-females \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/GWAS_Females_Only
+
+## Males only 
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --logistic \
+      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --pheno-name Pheno \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age \
+      --filter-males \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/GWAS_Males_Only
+```
+
+Before looking at age related SNPs, we need to create a table of the controls and another table of the disease cases. R script make_cases_and_controls_pheno_tables.R
+```
+# Load phenotype data in R
+df <- read.table("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt", header=T)
+
+# 1. Controls and PA  only (Pheno == 1)
+controls <- df[df$Pheno == 1, c("FID", "IID")]
+write.table(controls, "../snp_array/covariates_and_phenotype_files/controls_and_PA.txt", row.names=F, col.names=F, quote=F)
+
+# 2. Cases which include AD and LBD (Pheno == 2)
+cases <- df[df$Pheno == 2, c("FID", "IID")]
+write.table(cases, "../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt", row.names=F, col.names=F, quote=F)
+```
+
+```
+# GWAS of age related SNPs
+# ANALYSIS 1: Longevity / Healthy Aging
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --keep ../snp_array/covariates_and_phenotype_files/controls_and_PA.txt \
+      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Longevity_GWAS_Controls_Only
+
+# ANALYSIS 2: Age of Onset in Cases
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --keep ../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt \
+      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Age_of_Onset_GWAS_Cases_Only
+```
+
+
 Make Manhattan plots from GWAS association tests
 ```
 # Manhattan plots from GWAS 
-R 07_GWAS.Rmd
+R 07_GWAS_imputed_pheno.Rmd
+R 08_GWAS_imputed_sex.R
 ```
 
 ## Format files for imputing 
