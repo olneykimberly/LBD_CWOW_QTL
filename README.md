@@ -793,6 +793,14 @@ plink --bfile TOPMED_imput/gwas_filtered_data_flipped_clean \
       --out TOPMED_imputmerge_HAP_CWOW_filtered_final
 ```
 
+### Add phenotype information to the imputed PLINK files
+Fix IDs so PLINK uses real FID/IID instead of MC00092_MC00092
+```
+# First obtain the list of FID and IIDs
+awk 'BEGIN{OFS="\t"} NR>1 {print 0, $1 "_" $2, $1, $2}' \
+../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
+> update_ids.txt
+```
 
 #---- HERE STOP HERE
 ### Step 6: Update metadata file, counts data, and genotype file 
