@@ -797,56 +797,238 @@ plink --bfile TOPMED_imput/gwas_filtered_data_flipped_clean \
 Fix IDs so PLINK uses real FID/IID instead of MC00092_MC00092
 ```
 # First obtain the list of FID and IIDs
+# This creates an ID update file from our CWOW covariate table:
 awk 'BEGIN{OFS="\t"} NR>1 {print 0, $1 "_" $2, $1, $2}' \
 ../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
 > update_ids.txt
+
+# Now apply to our PLINK file
+plink2 \
+  --pfile CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20_hwe1e6 \
+  --update-ids update_ids.txt \
+  --make-pgen \
+  --out CWOW_qc_ids
+
+# check 
+head CWOW_qc_ids.psam
 ```
 
-#---- HERE STOP HERE
-### Step 6: Update metadata file, counts data, and genotype file 
+### Create sex and pheno type files for downstream use
 ```
-awk '{gsub(/ /,"\t"); print}' gwas_filtered_data.clean_genotype.raw > output_file_additional_filtering.txt
-salloc --mem=200G --cpus-per-task=4 --time=2:00:00
+# sex only file
+awk 'BEGIN{OFS="\t"; print "#FID","IID","SEX"} NR>1 {print $1,$2,$8}' \
+../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
+> ../../covariates_and_phenotype_files/sex_file_plink.txt
 
-datamash transpose < output_file_additional_filtering.txt > transposed_data_additional_filters.txt
-sed -e '1d; 3,6d' transposed_data.txt > ../gwas_filtered_data.genotype_formatted.txt
+# pheno only file
+awk 'BEGIN{OFS="\t"; print "#FID","IID","Pheno"} NR>1 {print $1,$2,$9}' \
+../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
+> ../../covariates_and_phenotype_files/pheno_file_plink.txt
 
-R 04_process_impute_genotype.Rmd
-```
-
-# Get SNP annotation
-```
-sh get_GRCh38_SNP_annotations.sh # downloads the dbSNP NCBI All_20180418.vcf.gz
-tabix -p vcf All_20180418.vcf.gz # index 
-bcftools view -m2 -M2 All_20180418.vcf.gz > All_20180418_biallelic_output.vcf.gz # get only biallelic sites 
-```
-
-### Step 7: Run Matrix eQTL 
-Firstly, the files will need some additional formatting. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
-```
-# Format the inputs 
-R 05a_format_inputs_for_MatrixEQTL.Rmd
-
-# Run matrix eQTL, note that it takes several hours to run. Submit as a background job. 
-R 05b_run_MatrixEQTL.Rmd
-
-# There is also a loop script that will loop through each disease type. 
-05_run_matrixeqlt_loop.R
+# covariates file for later GWAS/PCA plotting
+awk 'BEGIN{OFS="\t"; print "#FID","IID","Age","Sex","Braak.NFT","Thal.amyloid","Cing.LB"} NR>1 {print $1,$2,$13,$8,$10,$11,$12}' \
+../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
+> ../../covariates_and_phenotype_files/covar_file_plink.txt
 ```
 
-### Step 8: Plot the eQTL results 
+### Add the sex and pheno files, and split PAR on chrX
+Our CWOW data is for hg38/TOPMed. Thus we will use --split-par b38 before sex-checking chrX. PLINK 2 explicitly recommends splitting PAR to avoid chrX handling problems
 ```
-# eQTL plots for top SNP to gene associations
-R 06_plot_eQTLs.Rmd
+plink2 \
+  --pfile CWOW_qc_ids \
+  --update-sex sex_file_plink.txt \
+  --pheno pheno_file_plink.txt \
+  --split-par b38 \
+  --make-pgen \
+  --out CWOW_qc_ids_sex_pheno_splitPAR
+
+# check
+head CWOW_qc_ids_sex_pheno_splitPAR.psam
+```
+At this point, sex should no longer be NA, and the phenotype should be loaded for downstream PLINK runs. PLINK 2 loads phenotypes from --pheno, and --make-pgen writes a new fileset after applying these operations.
+
+### Make PLINK1 files for PLINKQC 
+plinkQC is built around PLINK QC outputs and is most natural with a PLINK1 fileset.
+```
+# convert PLINK2 to PLINK1 outputs
+plink2 \
+  --pfile CWOW_qc_ids_sex_pheno_splitPAR \
+  --make-bed \
+  --out CWOW_qc_ids_sex_pheno_splitPAR
+
+# check
+head CWOW_qc_ids_sex_pheno_splitPAR.fam
+```
+Should now have proper FID IID populated SEX and phenotype in column 6
+
+### PLINKQC 
+indir = /snp_array/TOPMED_imput/imputed_vcf\
+name  = CWOW_qc_ids_sex_pheno_splitPAR\
+This input will be used for check_sex(), check_het_and_miss(), and check_relatedness()\ 
+A sample failed heterozygosiry check and we will remove that sample before merging with HapMap for ancestry checking. 
+```
+# create file of the failed sample
+echo -e "MC12181\tMC12181" > remove_het_fail.txt
+
+# create a new PLINK file that has that sample removed
+plink \
+  --bfile CWOW_qc_ids_sex_pheno_splitPAR \
+  --remove remove_het_fail.txt \
+  --make-bed \
+  --out CWOW_qc_ids_sex_pheno_splitPAR_noHetFail
+```
+There are now 579 individuals retained.
+
+### Merge with HapMap
+To check for population ancestry, we will now use this clean dataset and restrict to the autosomes only. 
+```
+# get autosomes only
+plink \
+  --bfile CWOW_qc_ids_sex_pheno_splitPAR_noHetFail \
+  --autosome \
+  --make-bed \
+  --out CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome
+```
+rewrite the CWOW BIM IDs from CHR:POS:REF:ALT back to rsIDs where available, then merge with HapMap.
+```
+# Start from the autosome-only CWOW file after removing the heterozygosity outlier
+# Current file:
+#   CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome
+
+# Make a unique CHR:POS:REF:ALT -> rsID mapping.
+# Keep only rows with a real rsID, and only keep rsIDs that appear once.
+awk 'BEGIN{FS=OFS="\t"}
+     $2 != "." {count[$2]++; key[NR]=$1; val[NR]=$2}
+     END{
+       for(i=1;i<=NR;i++){
+         if(val[i] != "." && count[val[i]]==1) print key[i], val[i]
+       }
+     }' CHRPOSREFALT_to_rsid.txt > CHRPOSREFALT_to_rsid.unique.txt
+
+# Rewrite the BIM file so column 2 uses rsIDs where a unique mapping exists
+awk 'BEGIN{FS=OFS="\t"}
+     NR==FNR {map[$1]=$2; next}
+     {if($2 in map) $2=map[$2]; print}' \
+CHRPOSREFALT_to_rsid.unique.txt \
+CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome.bim \
+> CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome_rsid.bim
+
+# Copy over the BED and FAM so this becomes a valid PLINK dataset
+cp CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome.bed CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome_rsid.bed
+cp CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome.fam CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome_rsid.fam
+
+# Check that rsIDs are now present
+head CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome_rsid.bim
+
+# Find overlap SNPs between CWOW and HapMap by rsID
+awk '{print $2}' CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome_rsid.bim | sort -u > cwow.rsids
+awk '{print $2}' ../../reference/HapMapIII_CGRCh38_updated.clean.bim | sort -u > hapmap.rsids
+comm -12 cwow.rsids hapmap.rsids > overlap.rsids
+
+# Subset both datasets to the overlapping autosomal SNPs
+plink \
+  --bfile CWOW_qc_ids_sex_pheno_splitPAR_noHetFail_autosome_rsid \
+  --extract overlap.rsids \
+  --make-bed \
+  --out CWOW_overlap_rsid
+
+plink \
+  --bfile ../../reference/HapMapIII_CGRCh38_updated.clean \
+  --autosome \
+  --extract overlap.rsids \
+  --make-bed \
+  --out HapMap_overlap_rsid
+
+# Try the merge
+plink \
+  --bfile CWOW_overlap_rsid \
+  --bmerge HapMap_overlap_rsid.bed HapMap_overlap_rsid.bim HapMap_overlap_rsid.fam \
+  --make-bed \
+  --out merge_HAP_CWOW_pca
+
+# If PLINK reports strand mismatches, flip the problematic CWOW SNPs
+plink \
+  --bfile CWOW_overlap_rsid \
+  --flip merge_HAP_CWOW_pca-merge.missnp \
+  --make-bed \
+  --out CWOW_overlap_rsid_flipped
+
+# Try the merge again
+plink \
+  --bfile CWOW_overlap_rsid_flipped \
+  --bmerge HapMap_overlap_rsid.bed HapMap_overlap_rsid.bim HapMap_overlap_rsid.fam \
+  --make-bed \
+  --out merge_HAP_CWOW_pca_try2
+
+# If there are still problematic SNPs, remove them from both datasets
+plink \
+  --bfile CWOW_overlap_rsid_flipped \
+  --exclude merge_HAP_CWOW_pca_try2-merge.missnp \
+  --make-bed \
+  --out CWOW_overlap_rsid_flipped_clean
+
+plink \
+  --bfile HapMap_overlap_rsid \
+  --exclude merge_HAP_CWOW_pca_try2-merge.missnp \
+  --make-bed \
+  --out HapMap_overlap_rsid_clean
+
+# Final cleaned merge for ancestry PCA
+plink \
+  --bfile CWOW_overlap_rsid_flipped_clean \
+  --bmerge HapMap_overlap_rsid_clean.bed HapMap_overlap_rsid_clean.bim HapMap_overlap_rsid_clean.fam \
+  --make-bed \
+  --out merge_HAP_CWOW_pca_final
 ```
 
+### PLINKQC on post imputed SNPs
+plinkQC was used as a diagnostic/QC visualization step, while the actual filtering had already been applied upstream in your TOPMed/PLINK pipeline.
+```
+R 02_PLINK_QC_post_imputation.Rmd
+```
+
+# Final PLINK file for downstream
+imputed_vcf/CWOW_qc_ids_sex_pheno_splitPAR_noHetFail\
+Rename and move the final PLINK files
+```
+mkdir -p ../../final_gwas_dataset
+
+cp CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.bed ../../final_gwas_dataset/CWOW_TOPMED_final_postQC.bed
+cp CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.bim ../../final_gwas_dataset/CWOW_TOPMED_final_postQC.bim
+cp CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.fam ../../final_gwas_dataset/CWOW_TOPMED_final_postQC.fam
+
+# Compute fresh PCs for GWAS
+# Use autosomes only and LD pruning.
+plink \
+  --bfile ../../final_gwas_dataset/CWOW_TOPMED_final_postQC \
+  --autosome \
+  --indep-pairwise 200 50 0.2 \
+  --out ../../final_gwas_dataset/CWOW_TOPMED_final_postQC_pruned
+
+plink \
+  --bfile ../../final_gwas_dataset/CWOW_TOPMED_final_postQC \
+  --autosome \
+  --extract ../../final_gwas_dataset/CWOW_TOPMED_final_postQC_pruned.prune.in \
+  --pca 20 \
+  --out ../../final_gwas_dataset/CWOW_TOPMED_final_postQC
+```
+
+### Update pheno table with new PC infomration
+```
+r post_imputation_pca_pheno_update.R
+```
+final PLINK prefix:\
+../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC
+
+final phenotype/covariate table:\
+../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed_final.txt
 
 ## GWAS 
 Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. Model adjustes for covariates PC1-5 to account for population ancestry differences and age and sex. 
 ```
 cd ../ # In the scripts project folder
 
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+plink --bfile ../snp_array/TOPMED_imput/imputed_vcf/CWOW_qc_ids_sex_pheno_splitPAR_noHetFail \
       --linear \
       --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt \
       --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
@@ -964,3 +1146,42 @@ Make Manhattan plots from GWAS association tests
 R 07_GWAS_imputed_pheno.Rmd
 R 08_GWAS_imputed_sex.R
 ```
+
+#---- HERE
+### Step 6: Update metadata file, counts data, and genotype file 
+```
+awk '{gsub(/ /,"\t"); print}' gwas_filtered_data.clean_genotype.raw > output_file_additional_filtering.txt
+salloc --mem=200G --cpus-per-task=4 --time=2:00:00
+
+datamash transpose < output_file_additional_filtering.txt > transposed_data_additional_filters.txt
+sed -e '1d; 3,6d' transposed_data.txt > ../gwas_filtered_data.genotype_formatted.txt
+
+R 04_process_impute_genotype.Rmd
+```
+
+# Get SNP annotation
+```
+sh get_GRCh38_SNP_annotations.sh # downloads the dbSNP NCBI All_20180418.vcf.gz
+tabix -p vcf All_20180418.vcf.gz # index 
+bcftools view -m2 -M2 All_20180418.vcf.gz > All_20180418_biallelic_output.vcf.gz # get only biallelic sites 
+```
+
+### Step 7: Run Matrix eQTL 
+Firstly, the files will need some additional formatting. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
+```
+# Format the inputs 
+R 05a_format_inputs_for_MatrixEQTL.Rmd
+
+# Run matrix eQTL, note that it takes several hours to run. Submit as a background job. 
+R 05b_run_MatrixEQTL.Rmd
+
+# There is also a loop script that will loop through each disease type. 
+05_run_matrixeqlt_loop.R
+```
+
+### Step 8: Plot the eQTL results 
+```
+# eQTL plots for top SNP to gene associations
+R 06_plot_eQTLs.Rmd
+```
+

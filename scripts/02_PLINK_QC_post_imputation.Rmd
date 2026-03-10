@@ -1,7 +1,7 @@
 ---
-title: "PlinkQC with LBD CWOW SNP array data"
+title: "PlinkQC with LBD CWOW TOPMed-imputed SNP data"
 author: "Kimberly Olney, Ph.D."
-date: "07/25/2024"
+date: "March 2026"
 output:
   html_document:
     theme: cerulean
@@ -13,223 +13,360 @@ editor_options:
   chunk_output_type: inline
 ---
 
-# PlinkQC 
-PlinkQC is a R package for genotype quality control in genetic association studies. See https://meyer-lab-cshl.github.io/plinkQC/index.html
+# PlinkQC
 
-The protocol is implemented in three main functions:\
-1) The per-individual quality control (perIndividualQC)\
-2) The per-marker quality control (perMarkerQC)\
-3) The generation of the new, quality control dataset (cleanData)\
+PlinkQC is an R package for genotype quality control in genetic association studies. See https://meyer-lab-cshl.github.io/plinkQC/index.html
 
-Individuals and markers that fail the quality control can subsequently be removed with plinkQC to generate a new, clean dataset.
+The protocol is implemented in three main functions:  
+1) The per-individual quality control (`perIndividualQC`)  
+2) The per-marker quality control (`perMarkerQC`)  
+3) The generation of the new, quality control dataset (`cleanData`)  
 
-Input  CWOW_flipped  712,571
-```{r setup, echo=FALSE, warning=FALSE}
+Individuals and markers that fail quality control can subsequently be removed with plinkQC to generate a new, clean dataset.
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 knitr::opts_knit$set(root.dir = ".")
 library(plinkQC)
-library(ggplot2) # save plots via ggsave
+library(ggplot2)
 Sys.setenv(RSTUDIO_PANDOC="/usr/local/biotools/pandoc/3.1.2/bin")
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/")
 ```
 
-```{r params, echo=FALSE}
+```{r}
 # Path to plinkQC package
-package.dir <- find.package('plinkQC')
-# Path to plink tool 
+package.dir <- find.package("plinkQC")
+
+# Path to PLINK 1.9
 path2plink <- "/tgen_labs/jfryer/kolney/tools/miniconda3/envs/QTL/bin/plink"
 
-# Input directory
-indir <- '/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/TOPMED_imput'
-# Output directory 
-qcdir <- '/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/TOPMED_imput'
-# Name of the SNP array input data 
-name <- 'gwas_filtered_data' #  CWOW_n598_GRCh38_updated
+# Input directory containing PLINK bed/bim/fam files
+indir <- "/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/TOPMED_imput/imputed_vcf"
+
+# Output directory for plinkQC plots and fail lists
+qcdir <- "/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/results/plinkQC_plots_post_imputation"
+dir.create(qcdir, recursive = TRUE, showWarnings = FALSE)
+
+# Main CWOW dataset for sample-level QC
+# This file should already have:
+# - corrected FID/IID
+# - sex and phenotype added
+# - PAR split on chrX
+# - heterozygosity-fail sample removed
+name <- "CWOW_qc_ids_sex_pheno_splitPAR_noHetFail"
+
+# Merged CWOW + HapMap dataset for ancestry evaluation
+prefixMergedDataset <- "merge_HAP_CWOW_pca_final"
 ```
 
-# Per-individual quality control
-PerIndividualQC writes a list of all fail individual IDs to the qcdir. These IDs will be removed in the computation of the perMarkerQC
+# Input files used in this Rmd
+The following files are expected in indir:
+CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.bed
+CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.bim
+CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.fam
 
-The HapMapIII and CWOW data were merged prior to running plinkQC. See the README for more information on how the HapMapIII reference data was obtained.
-```{r individual_qc, eval=FALSE}
-prefixMergedDataset <- c("TOPMED_imputmerge_HAP_CWOW_filtered_final") 
+for sex check, heterozygosity/missingness, relatedness, and per-marker QC.
+The ancestry check additionally uses the merged reference dataset:
+merge_HAP_CWOW_pca_final.bed
+merge_HAP_CWOW_pca_final.bim
+merge_HAP_CWOW_pca_final.fam
 
-fail_individuals <- perIndividualQC(indir=indir, 
-                                    qcdir='../snp_array', 
-                                    name=name,
-                                    prefixMergedDataset=prefixMergedDataset,
-                                    path2plink=path2plink,
-                                    europeanTh = 5, # default 1.5 
-                                    do.run_check_ancestry = FALSE,
-                                    interactive=TRUE, 
-                                    verbose=FALSE,
-                                    legend_text_size = 10,
-                                    legend_title_size = 10,
-                                    axis_text_size = 10,
-                                    axis_title_size = 10,
-                                    title_size = 12)
 
-ggsave("../results/plinkQC_plots/per_individual_check_imputed_2026.pdf", width = 8.5, height = 11)
+### Sex check
+check_sex identifies individuals with discordant reported and genetically inferred sex. This dataset was prepared with --split-par b38 prior to conversion to PLINK1 format so that chromosome X is handled appropriately.
+```{r}
+fail_sex <- check_sex(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  interactive = TRUE,
+  verbose = FALSE,
+  path2plink = path2plink,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12
+)
+
+ggsave(
+  filename = file.path(qcdir, "sex_check_post_imputation.pdf"),
+  width = 6,
+  height = 5
+)
 ```
 
-# Sex check
-check_sex: for the identification of individuals with discordant sex information
-```{r sex_check}
-# Run sex check 
-fail_sex <- check_sex(indir=indir, 
-                      qcdir=qcdir, 
-                      name=name, 
-                      interactive=TRUE,
-                      verbose=FALSE, 
-                      path2plink=path2plink, 
-                      legend_text_size = 10,
-                      legend_title_size = 10,
-                      axis_text_size = 10,
-                      axis_title_size = 10,
-                      title_size = 12)
+### Heterozygosity and sample missingness check
+The identification of individuals with outlying missing genotype and/or heterozygosity rates helps detect samples with poor DNA quality and/or concentration that should be excluded from the study. Typically, individuals with more than 3–7% of their genotype calls missing are removed. Outlying heterozygosity rates are judged relative to the overall heterozygosity rates in the study, and individuals whose rates are more than a few standard deviations from the mean heterozygosity rate are removed.
+```{r}
+fail_het_imiss <- check_het_and_miss(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  interactive = TRUE,
+  verbose = FALSE,
+  path2plink = path2plink,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12
+)
 
-ggsave("../results/plinkQC_plots/sex_check_2026.pdf", width = 6, height = 5)
+ggsave(
+  filename = file.path(qcdir, "heterozygosity_check_post_imputation.pdf"),
+  width = 7,
+  height = 6
+)
 ```
 
-# Heterozygosity check
-The identification of individuals with outlying missing genotype and/or heterozygosity rates helps to detect samples with poor DNA quality and/or concentration that should be excluded from the study. Typically, individuals with more than 3-7% of their genotype calls missing are removed. Outlying heterozygosity rates are judged relative to the overall heterozygosity rates in the study, and individuals whose rates are more than a few standard deviations (sd) from the mean heterozygosity rate are removed. A typical quality control for outlying heterozygosity rates would remove individuals who are three sd away from the mean rate.
-```{r het_check}
-# Run check heterozygosity rate
-fail_het_imiss <- check_het_and_miss(indir=indir, 
-                                     qcdir=qcdir, 
-                                     name=name,
-                                     interactive=TRUE,
-                                     verbose=FALSE,
-                                     path2plink=path2plink,
-                                     legend_text_size = 10,
-                                     legend_title_size = 10,
-                                     axis_text_size = 10,
-                                     axis_title_size = 10,
-                                     title_size = 12)
+### Relatedness check
+Related individuals can be identified by their proportion of shared alleles at the genotyped markers (identity by descent, IBD). Standardly, individuals with second-degree relatedness or higher are excluded.
+```{r}
+exclude_relatedness <- check_relatedness(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  interactive = TRUE,
+  verbose = FALSE,
+  path2plink = path2plink,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12
+)
 
-ggsave("../results/plinkQC_plots/heterozygosity_check.pdf", width = 7, height = 6)
+ggsave(
+  filename = file.path(qcdir, "IBD_check_post_imputation.pdf"),
+  width = 10,
+  height = 6
+)
 ```
 
-# Relatedness check
-Related individuals can be identified by their proportion of shared alleles at the genotyped markers (identity by descend, IBD). Standardly, individuals with second-degree relatedness or higher will be excluded.
-```{r related_check}
-# Finds pairs of samples whose proportion of IBD is larger than the specified highIBDTh.
-# Default highIBDTh = 0.1875,
-exclude_relatedness <- check_relatedness(indir=indir, 
-                                         qcdir=qcdir, 
-                                         name=name,
-                                         interactive=TRUE,
-                                         verbose=FALSE,
-                                         path2plink=path2plink,
-                                         legend_text_size = 10,
-                                         legend_title_size = 10,
-                                         axis_text_size = 10,
-                                         axis_title_size = 10,
-                                         title_size = 12)
+### SNP missingness check
+Markers with excessive missingness rate are removed as they are considered unreliable. Typically, thresholds for marker exclusion based on missingness range from 1%–5%.
+```{r}
+fail_snpmissing <- check_snp_missingness(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  interactive = TRUE,
+  verbose = FALSE,
+  path2plink = path2plink,
+  showPlinkOutput = FALSE,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12
+)
 
-ggsave("../results/plinkQC_plots/IBD_check.pdf", width = 10, height = 6)
+ggsave(
+  filename = file.path(qcdir, "snp_missingness_check_post_imputation.pdf"),
+  width = 10,
+  height = 6
+)
 ```
 
-# Ancestry check
-The identification of individuals of divergent ancestry can be achieved by combining the genotypes of the study population with genotypes of a reference dataset consisting of individuals from known ethnicities (for instance individuals from the Hapmap or 1000 genomes study.
+### HWE check
+Markers with strong deviation from Hardy–Weinberg equilibrium (HWE) might indicate genotyping or genotype-calling errors. The HWE-filtered dataset used here has already undergone control-based HWE filtering upstream, but this section allows visual inspection of the distribution within plinkQC.
+```{r}
+fail_hwe <- check_hwe(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  interactive = TRUE,
+  verbose = FALSE,
+  path2plink = path2plink,
+  showPlinkOutput = FALSE,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12
+)
 
-Principal component analysis (PCA) on the combined genotype panel is employed to detect population structure, matching the granularity of the reference dataset. The tool check_ancestry is used to identify individuals with divergent ancestry. check_ancestry utilizes information from principal components 1 and 2 to determine the center of the European reference samples. Study samples with a Euclidean distance from this center that exceeds a specified radius are classified as non-European.
-
-The default radius is 1.5. For this dataset, to retain more individuals, a radius of 5 was selected. 
-```{r ancestry_check, eval = FALSE}
-# Merged CWOW and HapMap data
-prefixMergedDataset <- c("merge_HAP_CWOW_pca") 
-
-# europeanTh - Scaling factor of radius to be drawn around center of European reference sample
-# Default 1.5 was changed to 5 
-
-exclude_ancestry <- evaluate_check_ancestry(indir=indir, 
-                                            name=name,
-                                            europeanTh = 5,
-                                            prefixMergedDataset=prefixMergedDataset,
-                                            verbose=FALSE,
-                                            interactive=TRUE,
-                                            legend_text_size = 10,
-                                            legend_title_size = 10,
-                                            axis_text_size = 10,
-                                            axis_title_size = 10,
-                                            title_size = 12)
-
-ggsave("../results/plinkQC_plots/ancestry_check.pdf", width = 9, height = 6.5)
+ggsave(
+  filename = file.path(qcdir, "hwe_check_post_imputation.pdf"),
+  width = 10,
+  height = 5
+)
 ```
 
-# Missingness check
-Markers with excessive missingness rate are removed as they are considered unreliable. Typically, thresholds for marker exclusion based on missingness range from 1%-5%. Identifying markers with high missingness rates is implemented in snp_missingness. It calculates the rates of missing genotype calls and frequency for all variants in the individuals that passed the perIndividualQC.
-```{r snp_miss}
-fail_snpmissing <- check_snp_missingness(indir=indir, 
-                                         qcdir=qcdir, 
-                                         name=name,
-                                         interactive=TRUE,
-                                         verbose=FALSE,
-                                         path2plink=path2plink, 
-                                         showPlinkOutput=FALSE,
-                                         legend_text_size = 10,
-                                         legend_title_size = 10,
-                                         axis_text_size = 10,
-                                         axis_title_size = 10,
-                                         title_size = 12)
+### MAF check
+Markers with low minor allele frequency (MAF) are often removed because genotype calling becomes more difficult as the heterozygote and rare-homozygote clusters become sparse. The current dataset has already undergone upstream MAC filtering, but this section provides a visual summary of the retained allele-frequency distribution.
+```{r}
+fail_maf <- check_maf(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  interactive = TRUE,
+  verbose = FALSE,
+  path2plink = path2plink,
+  showPlinkOutput = FALSE,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12
+)
 
-ggsave("../results/plinkQC_plots/snp_missingness_check.pdf", width = 10, height = 6)
+ggsave(
+  filename = file.path(qcdir, "maf_check_post_imputation.pdf"),
+  width = 4.5,
+  height = 5.5
+)
+```
+# Per-marker QC summary
+This section summarizes the marker-level QC outputs produced by plinkQC.
+```{r}
+fail_markers <- perMarkerQC(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  path2plink = path2plink,
+  verbose = TRUE,
+  interactive = TRUE,
+  showPlinkOutput = FALSE
+)
+
+ggsave(
+  filename = file.path(qcdir, "summary_check_post_imputation.pdf"),
+  width = 8.5,
+  height = 11
+)
 ```
 
-# HWE check 
-Markers with strong deviation from HWE might be indicative of genotyping or genotype-calling errors. As serious genotyping errors often yield very low p-values, it is recommended to choose a reasonably low threshold to avoid filtering too many variants (that might have slight, non-critical deviations). Identifying markers with deviation from HWE is implemented in check_hwe. It calculates the observed and expected heterozygote frequencies per SNP in the individuals that passed the perIndividualQC and computes the deviation of the frequencies from Hardy-Weinberg equilibrium (HWE) by HWE exact test.
-```{r hwe}
-fail_hwe <- check_hwe(indir=indir, 
-                      qcdir=qcdir, 
-                      name=name, 
-                      interactive=TRUE,
-                      verbose=FALSE,
-                      path2plink=path2plink, 
-                      showPlinkOutput=FALSE, 
-                      legend_text_size = 10,
-                      legend_title_size = 10,
-                      axis_text_size = 10,
-                      axis_title_size = 10,
-                      title_size = 12)
-ggsave("../results/plinkQC_plots/hwe_check.pdf", width = 10, height=5)
+### Ancestry check
+The identification of individuals of divergent ancestry is achieved by combining the study genotypes with a reference dataset consisting of individuals from known ancestral populations, here HapMapIII. Principal component analysis (PCA) on the combined genotype panel is used to detect population structure.
+evaluate_check_ancestry uses principal components 1 and 2 to determine the center of the European reference samples. Study samples with a Euclidean distance from this center that exceeds a specified radius are classified as non-European.
+The default radius is 1.5. For this dataset, a radius of 5 was selected to retain more individuals.
 
+PCA via plink and LD prune
+plink \
+  --bfile merge_HAP_CWOW_pca_final \
+  --pca 20 \
+  --out merge_HAP_CWOW_pca_final
+
+plink \
+  --bfile merge_HAP_CWOW_pca_final \
+  --indep-pairwise 200 50 0.2 \
+  --out merge_HAP_CWOW_pca_final_pruned
+
+plink \
+  --bfile merge_HAP_CWOW_pca_final \
+  --extract merge_HAP_CWOW_pca_final_pruned.prune.in \
+  --pca 20 \
+  --out merge_HAP_CWOW_pca_final
+
+head CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.renamed.sscore
+plink --bfile merge_HAP_CWOW_pca_final --indep-pairwise 200 50 0.2 --out merge_HAP_CWOW_pca_final_pruned
+plink --bfile merge_HAP_CWOW_pca_final --extract merge_HAP_CWOW_pca_final_pruned.prune.in --pca 20 --out merge_HAP_CWOW_pca_final
+```{r}
+path2plink2 <- "/tgen_labs/jfryer/kolney/tools/miniconda3/envs/QTL/bin/plink2"
+path2load_mat <- "/tgen_labs/jfryer/kolney/tools/plinkQC/inst/extdata/load_mat/merged_chrs.postQC.train.pca"
+
+file.exists(paste0(path2load_mat, ".acount"))
+file.exists(paste0(path2load_mat, ".eigenvec.allele"))
+
+exclude_ancestry <- ancestry_prediction(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  path2plink2 = path2plink2,
+  path2load_mat = path2load_mat,
+  interactive = TRUE,
+  verbose = FALSE,
+  legend_text_size = 10,
+  legend_title_size = 10,
+  axis_text_size = 10,
+  axis_title_size = 10,
+  title_size = 12,
+  do.run_ancestry_prediction = TRUE,
+  do.evaluate_ancestry_prediction = TRUE
+)
+
+ggsave(
+  filename = file.path(qcdir, "ancestry_check_post_imputation.pdf"),
+  width = 9,
+  height = 6.5
+)
+
+# PCA
+pca <- fread(file.path(qcdir, "CWOW_qc_ids_sex_pheno_splitPAR_noHetFail.renamed.sscore"))
+head(pca)
+ggplot(pca, aes(x = PC1_AVG, y = PC2_AVG)) +
+  geom_point(size = 2, alpha = 0.8) +
+  theme_bw() +
+  labs(
+    title = "Ancestry PCA projection",
+    x = "PC1",
+    y = "PC2",
+    color = "Predicted ancestry"
+  ) +
+  theme(
+    text = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+library(data.table)
+library(ggplot2)
+
+pca <- fread("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/TOPMED_imput/imputed_vcf/merge_HAP_CWOW_pca_final.eigenvec")
+colnames(pca)[1:4] <- c("FID", "IID", "PC1", "PC2")
+
+pca$dataset <- ifelse(grepl("^MC", pca$IID), "CWOW", "HapMap")
+
+ggplot(pca, aes(PC1, PC2, color = dataset)) +
+  geom_point(alpha = 0.7, size = 2) +
+  theme_bw() +
+  labs(
+    title = "CWOW + HapMap PCA",
+    x = "PC1",
+    y = "PC2",
+    color = "Dataset"
+  )
+
+exclude_ancestry <- ancestry_prediction(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  path2plink2 = path2plink2,
+  path2load_mat = path2load_mat,
+  excludeAncestry = c("Africa", "America", "Central_South_Asia", "East_Asia", "Middle_East"),
+  interactive = TRUE,
+  verbose = FALSE,
+  do.run_ancestry_prediction = TRUE,
+  do.evaluate_ancestry_prediction = TRUE
+)
+
+write.table(
+  exclude_ancestry$exclude_ancestry,
+  file = file.path(qcdir, paste0(name, ".exclude-ancestry.IDs")),
+  quote = FALSE,
+  sep = "\t",
+  row.names = FALSE,
+  col.names = FALSE
+)
 ```
-
-# MAF check 
-minor allele frequency (MAF). Markers with low minor allele count are often removed as the actual genotype calling (via the calling algorithm) is very difficult due to the small sizes of the heterozygote and rare-homozygote clusters. check_maf alculates the minor allele frequencies for all variants in the individuals that passed the perIndividualQC.
-```{r maf}
-fail_maf <- check_maf(indir=indir, 
-                      qcdir=qcdir, 
-                      name=name, 
-                      interactive=TRUE,
-                      verbose=FALSE,
-                      path2plink=path2plink, 
-                      showPlinkOutput=FALSE, 
-                      legend_text_size = 10,
-                      legend_title_size = 10,
-                      axis_text_size = 10,
-                      axis_title_size = 10,
-                      title_size = 12)
-ggsave("../results/plinkQC_plots/maf.pdf", width = 4.5, height=5.5)
-```
-
-# Output cleaned data 
-```{r clean}
-# Overview of failed markers
-fail_markers <- perMarkerQC(indir=indir, 
-                            qcdir="../snp_array", 
-                            name=name,
-                            path2plink=path2plink,
-                            verbose=TRUE, 
-                            interactive=TRUE,
-                            showPlinkOutput=FALSE)
 
 # Output cleaned data
-Ids  <- cleanData(indir=indir, 
-                  qcdir="../snp_array", 
-                  name=name, 
-                  path2plink=path2plink,
-                  verbose=TRUE, 
-                  showPlinkOutput=FALSE)
+cleanData generates a cleaned dataset after removing all individuals and markers failing the plinkQC thresholds.
+```{r}
+Ids <- cleanData(
+  indir = indir,
+  qcdir = qcdir,
+  name = name,
+  path2plink = path2plink,
+  verbose = TRUE,
+  showPlinkOutput = FALSE
+)
 ```
 
-
+# No additional filtering was applied after plinkQC evaluation.
+# The final dataset retained for downstream GWAS/eQTL analyses was:
+```{r}
+final_dataset <- file.path(indir, name)
+final_dataset
+```
