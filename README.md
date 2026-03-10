@@ -1038,8 +1038,29 @@ R 07_GWAS_imputed_pheno.Rmd
 R 08_GWAS_imputed_sex.R
 ```
 
-#---- HERE
-### Step 6: Update metadata file, counts data, and genotype file 
+### Update metadata file, counts data, and genotype file 
+regenerate the additive genotype export from
+```
+# Regenerate the additive genotype file from the final 579-sample PLINK set
+cd /LBD_CWOW_QTL/scripts/
+
+plink \
+  --bfile ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC \
+  --recodeA \
+  --out ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC.clean_genotype
+
+cd /tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/final_gwas_dataset
+
+r create_n579_metadata.R
+
+```
+
+
+
+
+
+
+# --- HERE
 ```
 awk '{gsub(/ /,"\t"); print}' gwas_filtered_data.clean_genotype.raw > output_file_additional_filtering.txt
 salloc --mem=200G --cpus-per-task=4 --time=2:00:00

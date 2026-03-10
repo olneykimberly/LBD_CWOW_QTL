@@ -1,5 +1,5 @@
 ---
-title: "GWAS Visualization"
+title: "Logistic GWAS Visualization"
 author: "Kimberly Olney, Ph.D."
 date: "March 2026"
 output: html_document
@@ -20,7 +20,7 @@ library(ggplot2)
 snp_anno <- fread("../snp_array/reference/NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv")
 snp_anno[, `:=`(gene = Gene, rsid = names)]
 
-# Mapping from current PLINK SNP IDs (CHR:POS:REF:ALT) back to rsIDs
+# Mapping from PLINK SNP IDs (CHR:POS:REF:ALT) back to rsIDs
 id_map <- fread("../snp_array/reference/CHRPOSREFALT_to_rsid.txt", header = FALSE)
 setnames(id_map, c("plink_id", "rsid"))
 
@@ -28,36 +28,33 @@ chr_labels <- c(as.character(1:22))
 dir.create("../results/gwas", recursive = TRUE, showWarnings = FALSE)
 ```
 
-# Define a function to process, plot, and save results
+## Define function to process and plot logistic GWAS results
 ```{r}
-process_gwas <- function(file_path, trait_name, colors, output_prefix) {
+process_gwas_logistic <- function(file_path, trait_name, colors, output_prefix) {
   
   # Load GWAS results
   gwas <- fread(file_path)
   
-  # Keep only additive SNP test rows if present
+  # Keep only additive SNP test rows
   if ("TEST" %in% colnames(gwas)) {
     gwas <- gwas[TEST == "ADD"]
   }
   
+  # Remove rows with missing P-values
+  gwas <- gwas[!is.na(P)]
+  
   # Map PLINK SNP IDs back to rsIDs
   gwas <- merge(gwas, id_map, by.x = "SNP", by.y = "plink_id", all.x = TRUE)
   
-  # Merge with annotation using rsID
+  # Merge with SNP annotation
   gwas_snp <- merge(gwas, snp_anno, by = "rsid", all.x = TRUE)
   
-  # If some rsIDs are missing from annotation, keep original GWAS rows
-  # and fall back to plotting with existing CHR/BP
-  if (!"CHR" %in% colnames(gwas_snp) || !"BP" %in% colnames(gwas_snp)) {
-    stop("CHR and BP columns are missing after merge.")
-  }
-  
-  # Clean chromosome column for plotting
+  # Clean chromosome column
   gwas_snp[, CHR := as.character(CHR)]
   gwas_snp <- gwas_snp[CHR %in% chr_labels]
   gwas_snp[, CHR := factor(CHR, levels = chr_labels)]
   
-  # Prepare labels
+  # Labels for top hits
   gwas_snp[, label := ifelse(P < 1e-5 & !is.na(gene), gene, NA)]
   
   # Manhattan plot
@@ -66,7 +63,7 @@ process_gwas <- function(file_path, trait_name, colors, output_prefix) {
     pval.colname = "P",
     chr.colname = "CHR",
     pos.colname = "BP",
-    plot.title = paste("GWAS", trait_name),
+    plot.title = paste("Logistic GWAS", trait_name),
     y.label = "-log10(p-value)",
     chr.col = colors,
     label.colname = "label",
@@ -96,52 +93,57 @@ process_gwas <- function(file_path, trait_name, colors, output_prefix) {
   )
   dev.off()
   
-  # Display QQ plot in RMarkdown
+  # Show QQ plot in RMarkdown
   qqman::qq(
     gwas_snp$P,
     main = paste("QQ Plot:", trait_name),
     col = colors[1]
   )
   
-  # Save merged annotated table
+  # Save annotated table
   fwrite(
     gwas_snp,
     paste0("../results/gwas/", output_prefix, "_annotated_results.tsv"),
     sep = "\t"
   )
   
-  # Return object for inspection
   return(gwas_snp)
 }
 ```
 
-# Define GWAS tasks: list(file, title, colors, filename_suffix)
+## Define logistic GWAS tasks
 ```{r}
-tasks <- list(
+tasks_logistic <- list(
   list(
-    "../snp_array/associations_with_imputed_snps/Braak_association_imputed_covar_adj.assoc.linear",
-    "Braak NFT Stage",
-    c("navyblue", "skyblue2"),
-    "Braak"
+    "../snp_array/associations_with_imputed_snps/GWAS_DiseaseStatus_Control_vs_Case.assoc.logistic",
+    "Disease Status: Control/PA vs AD/LBD",
+    c("firebrick4", "salmon2"),
+    "DiseaseStatus"
   ),
   list(
-    "../snp_array/associations_with_imputed_snps/Thal_association_imputed_covar_adj.assoc.linear",
-    "Thal Amyloid Phase",
-    c("#741551ff", "#dbabbcff"),
-    "Thal"
+    "../snp_array/associations_with_imputed_snps/GWAS_Sex.assoc.logistic",
+    "Sex",
+    c("darkgreen", "palegreen3"),
+    "Sex"
   ),
   list(
-    "../snp_array/associations_with_imputed_snps/CingLB_association_imputed_covar_adj.assoc.linear",
-    "Cingulate Lewy Body Count",
-    c("gold3", "grey3"),
-    "CingLB"
+    "../snp_array/associations_with_imputed_snps/GWAS_Females_Only.assoc.logistic",
+    "Disease Status in Females Only",
+    c("deeppink4", "pink2"),
+    "FemalesOnly"
+  ),
+  list(
+    "../snp_array/associations_with_imputed_snps/GWAS_Males_Only.assoc.logistic",
+    "Disease Status in Males Only",
+    c("midnightblue", "lightblue2"),
+    "MalesOnly"
   )
 )
 
-gwas_results <- list()
+gwas_logistic_results <- list()
 
-for (task in tasks) {
-  gwas_results[[task[[4]]]] <- process_gwas(
+for (task in tasks_logistic) {
+  gwas_logistic_results[[task[[4]]]] <- process_gwas_logistic(
     file_path = task[[1]],
     trait_name = task[[2]],
     colors = task[[3]],
