@@ -585,24 +585,23 @@ rsq Filter:0.2\
 Phasing:eagle\
 Population:all\
 Mode:impuation\
-Submit job\
+Submit job
 
-The outputted imputed variants 
+The output is imputed variants per chromosome as vcf files.
 
-### Post imputation 
-Index 
+### Processing TOPMed Imputed Genotypes and Filtering High-Confidence Variants
+Index vcf files
 ```
 for chr in {1..22} X; do
     tabix -p vcf chr$chr.dose.vcf.gz
 done
 ```
 
-## Processing TOPMed Imputed Genotypes and Filtering High-Confidence Variants
-
 Imputed genotype data from the TOPMed imputation server were provided as per-chromosome dosage VCF files (`chr*.dose.vcf.gz`) together with imputation quality summary files (`chr*.info.gz`). These files are then converted into PLINK2 format, merged into a genome-wide dataset, and filtered to retain only high-confidence imputed variants using the Minimac imputation accuracy metric (`R2`).
 ```
 # Create sex file for chromosome X import
-# PLINK2 requires sample sex information when importing chromosome X to correctly handle genotype ploidy.
+# PLINK2 requires sample sex information when importing chromosome X 
+# This is used to correctly handle genotype ploidy.
 # where `1 = male` and `2 = female`.
 
 awk 'NR==1{next} {print $1, $2, $8}' \
@@ -612,7 +611,6 @@ awk 'NR==1{next} {print $1, $2, $8}' \
 
 ### Convert imputed VCF files to PLINK2 format
 Each imputed chromosome VCF was converted into PLINK2 format while preserving imputed genotype dosage values.
-
 ```
 for chr in {1..22}; do
   plink2 \
@@ -630,7 +628,6 @@ plink2 \
 
 ### Merge chromosomes into a genome-wide dataset
 All chromosome datasets were merged into a single genome-wide PLINK2 dataset. Variant IDs were reassigned using the format `CHR:POS:REF:ALT` to ensure uniqueness across split multiallelic variants present in the imputed data.
-
 ```
 for chr in {1..22} X; do
   echo chr${chr}_TOPMED
@@ -645,13 +642,12 @@ plink2 \
 ```
 
 ### Identify high-confidence imputed variants
-
 Imputation introduces uncertainty in genotype estimation. The Minimac imputation accuracy metric (`R2`) estimates the correlation between imputed and true genotypes. To retain high-confidence variants for downstream GWAS and eQTL analyses, variants were filtered to `R2 ≥ 0.8`.
 Because variant IDs were reassigned during merging (`CHR:POS:REF:ALT`), the INFO-derived SNP list must use the same format.
-
 ```
+# make directory to store the r2 variant list per chromosome
 mkdir -p info_r2_0.8_lists
-
+# for each chr get the variants with r2 >= 0.8
 for chr in {1..22} X; do
   zcat chr${chr}.info.gz | \
   awk -F'\t' '
@@ -696,13 +692,8 @@ plink2 \
 ```
 
 ### Before moving on to filtering, make a mapping key of the rsIDs and positions
+Because the variants are now named as CHR:POS:REF:ALT we will have a key that matches this to the rsIDs
 ```
-awk 'BEGIN{FS=OFS="\t"} !/^#/ {print $3, $1 ":" $2 ":" $4 ":" $5}' \
-CWOW_TOPMED_allchr.pvar > variant_id_lookup.txt
-
-awk 'BEGIN{FS=OFS="\t"} !/^#/ {print $1 ":" $2 ":" $4 ":" $5, $3}' \
-CWOW_TOPMED_allchr.pvar > CHRPOSREFALT_to_currentID.txt
-
 for chr in {1..22} X; do
   awk 'BEGIN{FS=OFS="\t"} !/^#/ {print $1 ":" $2 ":" $4 ":" $5, $3}' chr${chr}_TOPMED.pvar
 done > CHRPOSREFALT_to_rsid.txt
@@ -720,9 +711,9 @@ writes a new filtered PLINK2 dataset
   --make-pgen \
   --out CWOW_TOPMED_allchr_R2_0.8_biallelic_snps
 ```
-19182512 variants remaining after filtering 
+19,182,512 variants remaining after filtering 
 
-### Step 5: Additional filtering and Create genotype file
+### Additional filtering and Create genotype file
 | Filter                     | Threshold                             |
 | -------------------------- | ------------------------------------- |
 | Missingness                | `geno ≤ 0.05`                         |
@@ -737,12 +728,13 @@ plink2 \
   --make-pgen \
   --out CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20
 ```
-6,793,783 variants remaining after main filters.
+6,793,783 variants remaining after mac and geno filters.
 
-### HWE
-Hardy–Weinberg Equilibrium (HWE) is a population genetics principle describing the expected relationship between allele frequencies and genotype frequencies in a randomly mating population.
+### HWE filtering (controls)
+Hardy–Weinberg Equilibrium (HWE) is a population genetics principle describing the expected relationship between allele frequencies and genotype frequencies in a randomly mating population.\
 In case–control GWAS, true disease-associated variants can deviate from HWE in cases. For example, if allele A increases disease risk, then cases will contain excess AA or Aa genotypes relative to the general population. That deviation from equilibrium is real biology, not a genotyping error. Thus only apply HWE to the controls. 
 ```
+# Obtain list of control samples which is the controls and PA samples
 awk 'NR>1 && $9==1 {print $1 "_" $2}' \
 ../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
 > controls.keep
@@ -753,7 +745,7 @@ plink2 \
   --hwe 1e-6 midp \
   --write-snplist \
   --out controls_hwe_pass
-# 6,793,778 variants remaining after main filters.
+# 6,793,778 variants remaining after main filters. (only 5 variants)
 
 plink2 \
   --pfile CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20 \
@@ -763,15 +755,16 @@ plink2 \
 ```
 
 ### Re-run PLINKQC on the final imputed dataset
+We will need to merge with HapMap to obtain ancestry information. Some variants are not consistnt between HapMap and our CWOW dataset, so they need to be either flipped or removed. 
 ```
 cd TOPMED_imput/cwow_merge_with_hapmap/
-# 1) Try flipping the problematic SNPs
+# Flipping the problematic SNPs
 plink --bfile TOPMED_imput/gwas_filtered_data \
       --flip TOPMED_imputmerge_HAP_CWOW_filtered-merge.missnp \
       --make-bed \
       --out TOPMED_imput/gwas_filtered_data_flipped
 
-# 2) Try the merge again
+# Try the merge again
 plink --bfile TOPMED_imput/gwas_filtered_data_flipped \
       --bmerge reference/HapMapIII_CGRCh38_updated.clean.bed \
                reference/HapMapIII_CGRCh38_updated.clean.bim \
@@ -779,7 +772,7 @@ plink --bfile TOPMED_imput/gwas_filtered_data_flipped \
       --make-bed \
       --out TOPMED_imputmerge_HAP_CWOW_filtered_try2
 
-# Remove stubborn problematic SNPs from your dataset
+# Remove problematic SNPs from CWOW dataset
 plink --bfile TOPMED_imput/gwas_filtered_data_flipped \
       --exclude TOPMED_imputmerge_HAP_CWOW_filtered_try2-merge.missnp \
       --make-bed \
@@ -800,6 +793,8 @@ plink --bfile TOPMED_imput/gwas_filtered_data_flipped_clean \
       --out TOPMED_imputmerge_HAP_CWOW_filtered_final
 ```
 
+
+#---- HERE STOP HERE
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
 awk '{gsub(/ /,"\t"); print}' gwas_filtered_data.clean_genotype.raw > output_file_additional_filtering.txt
