@@ -1,10 +1,17 @@
-# Load phenotype data in R
-df <- read.table("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt", header=T)
+# make_cases_and_controls_pheno_tables.R
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
+library(data.table)
 
-# 1. Controls and PA  only (Pheno == 1)
-controls <- df[df$Pheno == 1, c("FID", "IID")]
-write.table(controls, "../snp_array/covariates_and_phenotype_files/controls_and_PA.txt", row.names=F, col.names=T, quote=F)
+df <- fread("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed_final.txt")
 
-# 2. Cases which include AD and LBD (Pheno == 2)
-cases <- df[df$Pheno == 2, c("FID", "IID")]
-write.table(cases, "../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt", row.names=F, col.names=T, quote=F)
+# Controls and PA only (Pheno == 1)
+controls <- df[Pheno == 1, .(FID, IID)]
+fwrite(controls,
+       "../snp_array/covariates_and_phenotype_files/controls_and_PA.txt",
+       sep = "\t", col.names = FALSE)
+
+# Cases: AD and LBD (Pheno == 2)
+cases <- df[Pheno == 2, .(FID, IID)]
+fwrite(cases,
+       "../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt",
+       sep = "\t", col.names = FALSE)
