@@ -328,6 +328,7 @@ plink --bfile reference/HapMapIII_CGRCh38_updated.flipped \
       --make-bed \
       --out reference/HapMapIII_CGRCh38_updated.clean
 ```
+
 ### Merge
 Merge study genotypes and reference data
 The matching study and reference dataset can now be merged into a combined dataset with plink –bmerge. If all steps outlined above were conducted successfully, no mismatch errors should occur.
@@ -387,34 +388,18 @@ Create PCA and update metadata file to reflect that there are now 580 individual
 ```
 cd ../scripts
 # PCA 
-plink --bfile ../snp_array/CWOW_flipped.clean \
+plink --bfile ../snp_array/post_plinkQC/CWOW_flipped.clean \
       --pca 20 --out ../snp_array/CWOW_flipped.clean_pca_results
 
 # update metadata
 R 03_update_meta.Rmd
 ```
-
-### Step 5: Further clean and create genotype file
-| Filter                     | Threshold                             |
-| -------------------------- | ------------------------------------- |
-| Minor allele frequency     | `MAF ≥ 0.05`                          |
-| Missingness                | `geno ≤ 0.05`                         |
-| Hardy–Weinberg equilibrium | `HWE ≥ 1e-6` (controls)               |
+### Step 5: Create genotype file
 ```
 cd ../snp_array
-# create a final clean genotype file for all downstream data analysis
-plink --bfile TOPMED_imput/final_filtered_data \
-      --maf 0.05 \
-      --geno 0.05 \
-      --hwe 1e-6 \
-      --make-bed \
-      --out TOPMED_imput/gwas_filtered_data
-
-plink --bfile TOPMED_imput/gwas_filtered_data \
-      --recodeA --out TOPMED_imput/gwas_filtered_data.clean_genotype    
-
+plink --bfile preprocessing_snp_array_before_imputation/CWOW_flipped.clean_pca_results \
+      --recodeA --out CWOW_flipped.clean_genotype
 ```
-
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
 R 04_process_genotype.Rmd
@@ -431,138 +416,13 @@ R 05b_run_MatrixEQTL.Rmd
 # There is also a loop script that will loop through each disease type. 
 05_run_matrixeqlt_loop.R
 ```
-
 ### Step 8: Plot the eQTL results 
 ```
 # eQTL plots for top SNP to gene associations
 R 06_plot_eQTLs.Rmd
 ```
 
-## GWAS 
-Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. Model adjustes for covariates PC1-5 to account for population ancestry differences and age and sex. 
-```
-cd ../ # In the scripts project folder
-
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --linear \
-      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/Braak_association_imputed_covar_adj
-      
-      
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --linear \
-      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/Thal_association_imputed_covar_adj
-
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --linear \
-      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/CingLB_association_imputed_covar_adj
-
-# Pheno is disease status
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --linear \
-      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Sex, Pheno \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/Age_association_imputed_covar_adj
-      
-# clean up 
-mv *.log ../snp_array/plink_logs
-```
-
-Additionally, we will use a logistic to look at GWAS associated with disease status (Pheno) and sex. Disease status and sex are given values of 1 or 2. Males are 1 and females are 2. For disease, controls and PA are 1 while LBD and AD are 2. 
-```
-# GWAS of disease status: controls/PA (1) vs AD/LBD cases (2)
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --logistic \
-      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --pheno-name Pheno \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1,PC2,PC3,PC4,PC5,Age,Sex \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/GWAS_DiseaseStatus_Control_vs_Case
-      
-# GWAS of sex-biased disease SNPs
-## Females only
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --logistic \
-      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --pheno-name Pheno \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Age \
-      --filter-females \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/GWAS_Females_Only
-
-## Males only 
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --logistic \
-      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --pheno-name Pheno \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Age \
-      --filter-males \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/GWAS_Males_Only
-```
-
-Before looking at age related SNPs, we need to create a table of the controls and another table of the disease cases. R script make_cases_and_controls_pheno_tables.R
-```
-# Load phenotype data in R
-df <- read.table("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt", header=T)
-
-# 1. Controls and PA  only (Pheno == 1)
-controls <- df[df$Pheno == 1, c("FID", "IID")]
-write.table(controls, "../snp_array/covariates_and_phenotype_files/controls_and_PA.txt", row.names=F, col.names=F, quote=F)
-
-# 2. Cases which include AD and LBD (Pheno == 2)
-cases <- df[df$Pheno == 2, c("FID", "IID")]
-write.table(cases, "../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt", row.names=F, col.names=F, quote=F)
-```
-
-```
-# GWAS of age related SNPs
-# ANALYSIS 1: Longevity / Healthy Aging
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --linear \
-      --keep ../snp_array/covariates_and_phenotype_files/controls_and_PA.txt \
-      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Sex \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/Longevity_GWAS_Controls_Only
-
-# ANALYSIS 2: Age of Onset in Cases
-plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
-      --linear \
-      --keep ../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt \
-      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
-      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
-      --covar-name PC1, PC2, PC3, PC4, PC5, Sex \
-      --hide-covar \
-      --out ../snp_array/associations_with_imputed_snps/Age_of_Onset_GWAS_Cases_Only
-```
-
-
-Make Manhattan plots from GWAS association tests
-```
-# Manhattan plots from GWAS 
-R 07_GWAS_imputed_pheno.Rmd
-R 08_GWAS_imputed_sex.R
-```
-
-## Format files for imputing 
+# Format files for imputing 
 The above was completed for the clean unimputed genotypes. Now that we have clean genotypes from unrelated individuals, we will impute genotypes following the TOPMed impute protocol. https://topmedimpute.readthedocs.io/en/latest/prepare-your-data/
 
 If you use the Imputation TOPMed Server, cite:
@@ -729,7 +589,6 @@ Submit job\
 
 The outputted imputed variants 
 
-
 ### Post imputation 
 Index 
 ```
@@ -738,95 +597,221 @@ for chr in {1..22} X; do
 done
 ```
 
-merge
+## Processing TOPMed Imputed Genotypes and Filtering High-Confidence Variants
+
+Imputed genotype data from the TOPMed imputation server were provided as per-chromosome dosage VCF files (`chr*.dose.vcf.gz`) together with imputation quality summary files (`chr*.info.gz`). These files are then converted into PLINK2 format, merged into a genome-wide dataset, and filtered to retain only high-confidence imputed variants using the Minimac imputation accuracy metric (`R2`).
 ```
-bcftools concat -a -O z -o CWOW_TOPMED_imputed.vcf.gz \
-chr1.dose.vcf.gz \
-chr2.dose.vcf.gz \
-chr3.dose.vcf.gz \
-chr4.dose.vcf.gz \
-chr5.dose.vcf.gz \
-chr6.dose.vcf.gz \
-chr7.dose.vcf.gz \
-chr8.dose.vcf.gz \
-chr9.dose.vcf.gz \
-chr10.dose.vcf.gz \
-chr11.dose.vcf.gz \
-chr12.dose.vcf.gz \
-chr13.dose.vcf.gz \
-chr14.dose.vcf.gz \
-chr15.dose.vcf.gz \
-chr16.dose.vcf.gz \
-chr17.dose.vcf.gz \
-chr18.dose.vcf.gz \
-chr19.dose.vcf.gz \
-chr20.dose.vcf.gz \
-chr21.dose.vcf.gz \
-chr22.dose.vcf.gz \
-chrX.dose.vcf.gz
+# Create sex file for chromosome X import
+# PLINK2 requires sample sex information when importing chromosome X to correctly handle genotype ploidy.
+# where `1 = male` and `2 = female`.
+
+awk 'NR==1{next} {print $1, $2, $8}' \
+../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
+> ../../covariates_and_phenotype_files/sex_file.txt
 ```
 
-remove of duplicates, indels and multiallelic variants 
+### Convert imputed VCF files to PLINK2 format
+Each imputed chromosome VCF was converted into PLINK2 format while preserving imputed genotype dosage values.
+
 ```
-plink --bfile CWOW_TOPMED_imputed --list-duplicate-vars --out duplicates
-plink --bfile CWOW_TOPMED_imputed --exclude duplicates.dupvar --make-bed --out data_no_dups
-plink --bfile data_no_dups --snps-only just-acgt --make-bed --out data_no_indels
-plink --bfile data_no_indels --biallelic-only strict --make-bed --out clean_data
-plink --bfile data_no_indels --biallelic-only strict --make-bed --out clean_data
+for chr in {1..22}; do
+  plink2 \
+    --vcf chr${chr}.dose.vcf.gz dosage=DS \
+    --make-pgen \
+    --out chr${chr}_TOPMED
+done
+
+plink2 \
+  --vcf chrX.dose.vcf.gz dosage=DS \
+  --update-sex ../../covariates_and_phenotype_files/sex_file.txt \
+  --make-pgen \
+  --out chrX_TOPMED
 ```
 
-HWE  HWE p < 1 x 10-5
-```
-plink --bfile clean_data --hardy --out hwe_results
-# To filter for controls (recommended for case/control studies), add the midp option:
-# plink --bfile clean_data --hwe 1e-5 midp --make-bed --out hwe_filtered_data
+### Merge chromosomes into a genome-wide dataset
+All chromosome datasets were merged into a single genome-wide PLINK2 dataset. Variant IDs were reassigned using the format `CHR:POS:REF:ALT` to ensure uniqueness across split multiallelic variants present in the imputed data.
 
-plink --bfile clean_data --hwe 1e-5 --make-bed --out hwe_filtered_data
-# Files moved to TOPMED_imput/intermediate_files_rm_dups_indels_multi_allele
 ```
+for chr in {1..22} X; do
+  echo chr${chr}_TOPMED
+done > pmerge_list.txt
 
-Minor allele frequency (MAF)
-```
-plink --bfile clean_data --hardy --out hwe_results
-# To filter for controls (recommended for case/control studies), add the midp option:
-# plink --bfile clean_data --hwe 1e-5 midp --make-bed --out hwe_filtered_data
-
-plink --bfile hwe_filtered_data --maf 0.01 --make-bed --out final_filtered_data
-# Files moved to TOPMED_imput/intermediate_files_rm_dups_indels_multi_allele
+plink2 \
+  --pmerge-list pmerge_list.txt \
+  --set-all-var-ids @:#:\$r:\$a \
+  --new-id-max-allele-len 96 \
+  --make-pgen \
+  --out CWOW_TOPMED_allchr
 ```
 
-### Step 4: Create PCA with the filtered CWOW data
-Create PCA and update metadata file to reflect that there are now 580 individuals 
-```
-cd snp_array/TOPMED_imput/
-# PCA 
-plink --bfile ../snp_array/TOPMED_imput/final_filtered_data \
-      --pca 20 --out ../snp_array/TOPMED_imput/final_filtered_data.pca_results
+### Identify high-confidence imputed variants
 
-# update metadata
-R 03_update_meta_imputed.Rmd
+Imputation introduces uncertainty in genotype estimation. The Minimac imputation accuracy metric (`R2`) estimates the correlation between imputed and true genotypes. To retain high-confidence variants for downstream GWAS and eQTL analyses, variants were filtered to `R2 ≥ 0.8`.
+Because variant IDs were reassigned during merging (`CHR:POS:REF:ALT`), the INFO-derived SNP list must use the same format.
+
+```
+mkdir -p info_r2_0.8_lists
+
+for chr in {1..22} X; do
+  zcat chr${chr}.info.gz | \
+  awk -F'\t' '
+  BEGIN{OFS=""}
+  !/^#/ {
+    match($8, /R2=([0-9.]+)/, a)
+    if (a[1] >= 0.8) print $1, ":", $2, ":", $4, ":", $5
+  }' > info_r2_0.8_lists/chr${chr}.R2_0.8.CHRPOSREFALT.snplist
+done
+
+# The number of high-confidence variants retained per chromosome can be inspected with:
+for chr in {1..22} X; do
+  wc -l info_r2_0.8_lists/chr${chr}.R2_0.8.CHRPOSREFALT.snplist
+done
 ```
 
-### Step 5: Create genotype file
+### Combine high-confidence variants across chromosomes
+This produces a genome-wide list of high-confidence imputed variants.
 ```
-cd ../snp_array/TOPMED_imput/
-plink --bfile final_filtered_data \
-      --recodeA --out final_filtered_data.genotype    
+cat info_r2_0.8_lists/chr*.R2_0.8.CHRPOSREFALT.snplist \
+> info_r2_0.8_lists/allchr.R2_0.8.CHRPOSREFALT.snplist
+
+sort -u info_r2_0.8_lists/allchr.R2_0.8.CHRPOSREFALT.snplist \
+> info_r2_0.8_lists/allchr.R2_0.8.unique.CHRPOSREFALT.snplist
+
+wc -l info_r2_0.8_lists/allchr.R2_0.8.unique.CHRPOSREFALT.snplist
+# 20,484,716
+
+# remove chr as PLINK won't have that in the name 
+sed 's/^chr//' info_r2_0.8_lists/allchr.R2_0.8.unique.CHRPOSREFALT.snplist \
+> info_r2_0.8_lists/allchr.R2_0.8.unique.CHRPOSREFALT.nochr.snplist
+```
+
+### Apply the INFO filter to the merged dataset
+The resulting filtered dataset contains genome-wide imputed genotypes restricted to variants with high imputation accuracy (`R2 ≥ 0.8`), suitable for downstream quality control and association analyses.
+```
+plink2 \
+  --pfile CWOW_TOPMED_allchr \
+  --extract info_r2_0.8_lists/allchr.R2_0.8.unique.CHRPOSREFALT.snplist \
+  --make-pgen \
+  --out CWOW_TOPMED_allchr_R2_0.8
+```
+
+### Before moving on to filtering, make a mapping key of the rsIDs and positions
+```
+awk 'BEGIN{FS=OFS="\t"} !/^#/ {print $3, $1 ":" $2 ":" $4 ":" $5}' \
+CWOW_TOPMED_allchr.pvar > variant_id_lookup.txt
+
+awk 'BEGIN{FS=OFS="\t"} !/^#/ {print $1 ":" $2 ":" $4 ":" $5, $3}' \
+CWOW_TOPMED_allchr.pvar > CHRPOSREFALT_to_currentID.txt
+
+for chr in {1..22} X; do
+  awk 'BEGIN{FS=OFS="\t"} !/^#/ {print $1 ":" $2 ":" $4 ":" $5, $3}' chr${chr}_TOPMED.pvar
+done > CHRPOSREFALT_to_rsid.txt
+```
+
+### Filter to retain only biallelic variants
+-max-alleles 2 keeps only biallelic variants
+--snps-only just-acgt keeps only standard A/C/G/T SNPs, removing indels and other non-SNP alleles
+writes a new filtered PLINK2 dataset
+```
+ plink2 \
+  --pfile CWOW_TOPMED_allchr_R2_0.8 \
+  --max-alleles 2 \
+  --snps-only just-acgt \
+  --make-pgen \
+  --out CWOW_TOPMED_allchr_R2_0.8_biallelic_snps
+```
+19182512 variants remaining after filtering 
+
+### Step 5: Additional filtering and Create genotype file
+| Filter                     | Threshold                             |
+| -------------------------- | ------------------------------------- |
+| Missingness                | `geno ≤ 0.05`                         |
+| Hardy–Weinberg equilibrium | `HWE ≥ 1e-6` (controls)               |
+| Minor allele count         | `MAC ≥ 20` (better for small samples) |
+```
+# create a final clean genotype file for all downstream data analysis
+plink2 \
+  --pfile CWOW_TOPMED_allchr_R2_0.8_biallelic_snps \
+  --geno 0.05 \
+  --mac 20 \
+  --make-pgen \
+  --out CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20
+```
+6,793,783 variants remaining after main filters.
+
+### HWE
+Hardy–Weinberg Equilibrium (HWE) is a population genetics principle describing the expected relationship between allele frequencies and genotype frequencies in a randomly mating population.
+In case–control GWAS, true disease-associated variants can deviate from HWE in cases. For example, if allele A increases disease risk, then cases will contain excess AA or Aa genotypes relative to the general population. That deviation from equilibrium is real biology, not a genotyping error. Thus only apply HWE to the controls. 
+```
+awk 'NR>1 && $9==1 {print $1 "_" $2}' \
+../../covariates_and_phenotype_files/covariates_and_phenotypes.txt \
+> controls.keep
+
+plink2 \
+  --pfile CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20 \
+  --keep controls.keep \
+  --hwe 1e-6 midp \
+  --write-snplist \
+  --out controls_hwe_pass
+# 6,793,778 variants remaining after main filters.
+
+plink2 \
+  --pfile CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20 \
+  --extract controls_hwe_pass.snplist \
+  --make-pgen \
+  --out CWOW_TOPMED_allchr_R2_0.8_biallelic_snps_geno0.05_mac20_hwe1e6
+```
+
+### Re-run PLINKQC on the final imputed dataset
+```
+cd TOPMED_imput/cwow_merge_with_hapmap/
+# 1) Try flipping the problematic SNPs
+plink --bfile TOPMED_imput/gwas_filtered_data \
+      --flip TOPMED_imputmerge_HAP_CWOW_filtered-merge.missnp \
+      --make-bed \
+      --out TOPMED_imput/gwas_filtered_data_flipped
+
+# 2) Try the merge again
+plink --bfile TOPMED_imput/gwas_filtered_data_flipped \
+      --bmerge reference/HapMapIII_CGRCh38_updated.clean.bed \
+               reference/HapMapIII_CGRCh38_updated.clean.bim \
+               reference/HapMapIII_CGRCh38_updated.clean.fam \
+      --make-bed \
+      --out TOPMED_imputmerge_HAP_CWOW_filtered_try2
+
+# Remove stubborn problematic SNPs from your dataset
+plink --bfile TOPMED_imput/gwas_filtered_data_flipped \
+      --exclude TOPMED_imputmerge_HAP_CWOW_filtered_try2-merge.missnp \
+      --make-bed \
+      --out TOPMED_imput/gwas_filtered_data_flipped_clean
+
+# Remove same SNPs from HapMap reference
+plink --bfile reference/HapMapIII_CGRCh38_updated.clean \
+      --exclude TOPMED_imputmerge_HAP_CWOW_filtered_try2-merge.missnp \
+      --make-bed \
+      --out reference/HapMapIII_CGRCh38_updated.clean_no_missnp
+
+# Merge cleaned datasets
+plink --bfile TOPMED_imput/gwas_filtered_data_flipped_clean \
+      --bmerge reference/HapMapIII_CGRCh38_updated.clean_no_missnp.bed \
+               reference/HapMapIII_CGRCh38_updated.clean_no_missnp.bim \
+               reference/HapMapIII_CGRCh38_updated.clean_no_missnp.fam \
+      --make-bed \
+      --out TOPMED_imputmerge_HAP_CWOW_filtered_final
 ```
 
 ### Step 6: Update metadata file, counts data, and genotype file 
 ```
-awk '{gsub(/ /,"\t"); print}' final_filtered_data.genotype.raw > output_file.txt
+awk '{gsub(/ /,"\t"); print}' gwas_filtered_data.clean_genotype.raw > output_file_additional_filtering.txt
 salloc --mem=200G --cpus-per-task=4 --time=2:00:00
 
-datamash transpose < output_file.txt > transposed_data.txt
-sed -e '1d; 3,6d' transposed_data.txt > ../final_filtered_data.genotype_formatted.txt
+datamash transpose < output_file_additional_filtering.txt > transposed_data_additional_filters.txt
+sed -e '1d; 3,6d' transposed_data.txt > ../gwas_filtered_data.genotype_formatted.txt
 
 R 04_process_impute_genotype.Rmd
 ```
 
 # Get SNP annotation
-
 ```
 sh get_GRCh38_SNP_annotations.sh # downloads the dbSNP NCBI All_20180418.vcf.gz
 tabix -p vcf All_20180418.vcf.gz # index 
@@ -852,90 +837,127 @@ R 05b_run_MatrixEQTL.Rmd
 R 06_plot_eQTLs.Rmd
 ```
 
-## GWAS 
-Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. 
-```
-cd ../ # In the main project folder
-mkdir GWAS
-cd GWAS
 
-plink --bfile ../snp_array/CWOW_flipped.clean \
+## GWAS 
+Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. Model adjustes for covariates PC1-5 to account for population ancestry differences and age and sex. 
+```
+cd ../ # In the scripts project folder
+
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
       --linear \
-      --out cingLBD_association \
-      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt
+      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Braak_association_imputed_covar_adj
       
-plink --bfile ../snp_array/CWOW_flipped.clean \
-      --linear \
-      --out Braak_association \
-      --pheno ../snp_array/covariates_and_phenotype_files/Braak_phenotypes.txt
       
-plink --bfile ../snp_array/CWOW_flipped.clean \
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
       --linear \
-      --out Thal_association \
-      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt
+      --pheno ../snp_array/covariates_and_phenotype_files/Thal_phenotypes.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Thal_association_imputed_covar_adj
+
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --pheno ../snp_array/covariates_and_phenotype_files/CingLB_phenotypes.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/CingLB_association_imputed_covar_adj
+
+# Pheno is disease status
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Sex, Pheno \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Age_association_imputed_covar_adj
       
 # clean up 
 mv *.log ../snp_array/plink_logs
 ```
 
+Additionally, we will use a logistic to look at GWAS associated with disease status (Pheno) and sex. Disease status and sex are given values of 1 or 2. Males are 1 and females are 2. For disease, controls and PA are 1 while LBD and AD are 2. 
+```
+# GWAS of disease status: controls/PA (1) vs AD/LBD cases (2)
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --logistic \
+      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --pheno-name Pheno \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1,PC2,PC3,PC4,PC5,Age,Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/GWAS_DiseaseStatus_Control_vs_Case
+      
+# GWAS of sex-biased disease SNPs
+## Females only
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --logistic \
+      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --pheno-name Pheno \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age \
+      --filter-females \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/GWAS_Females_Only
+
+## Males only 
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --logistic \
+      --pheno ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --pheno-name Pheno \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Age \
+      --filter-males \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/GWAS_Males_Only
+```
+
+Before looking at age related SNPs, we need to create a table of the controls and another table of the disease cases. R script make_cases_and_controls_pheno_tables.R
+```
+# Load phenotype data in R
+df <- read.table("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt", header=T)
+
+# 1. Controls and PA  only (Pheno == 1)
+controls <- df[df$Pheno == 1, c("FID", "IID")]
+write.table(controls, "../snp_array/covariates_and_phenotype_files/controls_and_PA.txt", row.names=F, col.names=F, quote=F)
+
+# 2. Cases which include AD and LBD (Pheno == 2)
+cases <- df[df$Pheno == 2, c("FID", "IID")]
+write.table(cases, "../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt", row.names=F, col.names=F, quote=F)
+```
+
+```
+# GWAS of age related SNPs
+# ANALYSIS 1: Longevity / Healthy Aging
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --keep ../snp_array/covariates_and_phenotype_files/controls_and_PA.txt \
+      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Longevity_GWAS_Controls_Only
+
+# ANALYSIS 2: Age of Onset in Cases
+plink --bfile ../snp_array/TOPMED_imput/gwas_filtered_data \
+      --linear \
+      --keep ../snp_array/covariates_and_phenotype_files/cases_AD_LBD.txt \
+      --pheno ../snp_array/covariates_and_phenotype_files/Age_phenotypes_imputed.txt \
+      --covar ../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed.txt \
+      --covar-name PC1, PC2, PC3, PC4, PC5, Sex \
+      --hide-covar \
+      --out ../snp_array/associations_with_imputed_snps/Age_of_Onset_GWAS_Cases_Only
+```
+
+
 Make Manhattan plots from GWAS association tests
 ```
 # Manhattan plots from GWAS 
-R 07_GWAS.Rmd
+R 07_GWAS_imputed_pheno.Rmd
+R 08_GWAS_imputed_sex.R
 ```
-
-# get sig
-awk -F'\t' 'NR==1 {for (i=1; i<=NF; i++) if ($i=="FDR") col=i} NR>1 && $col < 0.001' /Users/kolney/ASU\ Dropbox/Kimberly\ Olney/CWOW_data/eQTL/outputs/MatrixEQTL/cis_eQTL_AD_control > /Users/kolney/ASU\ Dropbox/Kimberly\ Olney/CWOW_data/eQTL/outputs/MatrixEQTL/cis_eQTL_AD_control_sig  
-
-# Transcription factor information 
-https://genome.ucsc.edu/cgi-bin/hgTables?db=hg38&hgta_group=regulation&hgta_track=jaspar&hgta_table=jaspar2024&hgta_doSchema=describe+table+schema 
-```
-wget https://hgdownload.soe.ucsc.edu/gbdb/hg38/jaspar/JASPAR2024.bb 
-
-# convert to bed
-bigBedToBed JASPAR2024.bb JASPAR2024.bed
-```
-
-# Get SNP annotation file
-dbSNP (NCBI)
-Download the latest VCF file for human SNPs from dbSNP.
-Use bcftools or tabix to extract relevant fields.
-Convert it into a table format similar to your Illumina annotation
-https://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/All_20180418.vcf.gz 
-bcftools query -f '%ID\t%CHROM\t%POS\t%REF,%ALT\n' All_20180418.vcf.gz > dbsnp_GRCh38.tsv
-
-# colocalisation 
-https://hanruizhang.github.io/GWAS-eQTL-Colocalization/ 
-
-
-# VEP
-https://useast.ensembl.org/info/docs/tools/vep/script/index.html
- 
-Key: https://useast.ensembl.org/info/genome/variation/prediction/predicted_data.html
- 
-install
-```
-git clone https://github.com/Ensembl/ensembl-vep.git
-cd ensembl-vep
-perl INSTALL.pl
-```
-
-Get human reference 
-```
-cd $HOME/.vep
-curl -O https://ftp.ensembl.org/pub/release-114/variation/indexed_vep_cache/homo_sapiens_vep_114_GRCh38.tar.gz
-tar xzf homo_sapiens_vep_114_GRCh38.tar.gz
-```
-
-run VEP 
-```
-cat NCBI_SNP_positions_with_gene_hg19ToHg38_lift_over.tsv | cut -f6 > snp_rs.txt
-/tgen_labs/jfryer/kolney/tools/ensembl-vep/./vep -i snp_rs.txt --cache
-```
-
-# notes
-https://www.nature.com/articles/s41416-018-0018-9
-https://www.colonomics.org/data-browser/eqtl-browser/
-https://useast.ensembl.org/info/docs/tools/vep/vep_formats.html#output
-https://useast.ensembl.org/info/genome/variation/prediction/predicted_data.html
-https://htseq.readthedocs.io/en/master/tutorials/tss.html

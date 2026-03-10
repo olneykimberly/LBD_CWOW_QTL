@@ -26,12 +26,9 @@ Individuals and markers that fail the quality control can subsequently be remove
 Input  CWOW_flipped  712,571
 ```{r setup, echo=FALSE, warning=FALSE}
 knitr::opts_knit$set(root.dir = ".")
-knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo=FALSE, results='hide', fig.keep='all')
-#library(devtools)
-#install_github("meyer-lab-cshl/plinkQC")
 library(plinkQC)
 library(ggplot2) # save plots via ggsave
-#Sys.setenv(RSTUDIO_PANDOC="/usr/local/biotools/pandoc/3.1.2/bin")
+Sys.setenv(RSTUDIO_PANDOC="/usr/local/biotools/pandoc/3.1.2/bin")
 ```
 
 ```{r params, echo=FALSE}
@@ -41,11 +38,11 @@ package.dir <- find.package('plinkQC')
 path2plink <- "/tgen_labs/jfryer/kolney/tools/miniconda3/envs/QTL/bin/plink"
 
 # Input directory
-indir <- '../snp_array/TOPMED_imput'
+indir <- '/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/TOPMED_imput'
 # Output directory 
-qcdir <- '../snp_array/final_imputed_post_plinkQC'
+qcdir <- '/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/TOPMED_imput'
 # Name of the SNP array input data 
-name <- 'hwe_filtered_data' #  CWOW_n598_GRCh38_updated
+name <- 'gwas_filtered_data' #  CWOW_n598_GRCh38_updated
 ```
 
 # Per-individual quality control
@@ -53,7 +50,7 @@ PerIndividualQC writes a list of all fail individual IDs to the qcdir. These IDs
 
 The HapMapIII and CWOW data were merged prior to running plinkQC. See the README for more information on how the HapMapIII reference data was obtained.
 ```{r individual_qc, eval=FALSE}
-prefixMergedDataset <- c("merge_HAP_CWOW_pca") 
+prefixMergedDataset <- c("TOPMED_imputmerge_HAP_CWOW_filtered_final") 
 
 fail_individuals <- perIndividualQC(indir=indir, 
                                     qcdir='../snp_array', 
@@ -70,7 +67,7 @@ fail_individuals <- perIndividualQC(indir=indir,
                                     axis_title_size = 10,
                                     title_size = 12)
 
-ggsave("../results/plinkQC_plots/per_individual_check.pdf", width = 8.5, height = 11)
+ggsave("../results/plinkQC_plots/per_individual_check_imputed_2026.pdf", width = 8.5, height = 11)
 ```
 
 # Sex check
@@ -89,7 +86,7 @@ fail_sex <- check_sex(indir=indir,
                       axis_title_size = 10,
                       title_size = 12)
 
-ggsave("../results/plinkQC_plots/sex_check.pdf", width = 6, height = 5)
+ggsave("../results/plinkQC_plots/sex_check_2026.pdf", width = 6, height = 5)
 ```
 
 # Heterozygosity check

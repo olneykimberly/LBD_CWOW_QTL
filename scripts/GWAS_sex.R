@@ -1,3 +1,5 @@
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
 library(dplyr)
 library(ggplot2)
 library(data.table)

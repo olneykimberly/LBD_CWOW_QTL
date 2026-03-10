@@ -4,3 +4,10 @@
 .Ruserdata
 snp_array/*
 scripts/example_Matrix_eQTL/*
+LBD_CWOW_QTL/MatrixEQTL/*
+LBD_CWOW_QTL/results/*
+results/*
+RNA_counts/*
+MatrixEQTL/*
+shiny_app/*
+rpubs.com/*

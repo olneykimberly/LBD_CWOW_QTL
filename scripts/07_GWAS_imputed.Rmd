@@ -7,9 +7,9 @@ output: html_document
 
 # Set up
 ```{r setup, include=FALSE}
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 knitr::opts_chunk$set(echo = TRUE, root.dir = ".")
 # Set paths and libraries
-.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 library(data.table)
 library(ggmanh)
 library(qqman)
