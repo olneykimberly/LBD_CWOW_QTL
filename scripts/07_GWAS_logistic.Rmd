@@ -10,7 +10,7 @@ output: html_document
 ```{r setup, include=FALSE}
 .libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 knitr::opts_chunk$set(echo = TRUE, root.dir = ".")
-
+setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
 library(data.table)
 library(ggmanh)
 library(qqman)
@@ -117,7 +117,7 @@ tasks_logistic <- list(
   list(
     "../snp_array/associations_with_imputed_snps/GWAS_DiseaseStatus_Control_vs_Case.assoc.logistic",
     "Disease Status: Control/PA vs AD/LBD",
-    c("firebrick4", "salmon2"),
+    c("firebrick4", "grey3"),
     "DiseaseStatus"
   ),
   list(
@@ -129,13 +129,13 @@ tasks_logistic <- list(
   list(
     "../snp_array/associations_with_imputed_snps/GWAS_Females_Only.assoc.logistic",
     "Disease Status in Females Only",
-    c("deeppink4", "pink2"),
+    c("#613e61ff", "#800080"),
     "FemalesOnly"
   ),
   list(
     "../snp_array/associations_with_imputed_snps/GWAS_Males_Only.assoc.logistic",
     "Disease Status in Males Only",
-    c("midnightblue", "lightblue2"),
+    c("#324932ff", "#008000"),
     "MalesOnly"
   )
 )
