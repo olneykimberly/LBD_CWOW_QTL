@@ -1,8 +1,10 @@
 .libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 library(data.table)
+
 setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
 
 meta <- fread("../metadata/n579_metadata.txt")
+
 # Check available group labels
 table(meta$TYPE, useNA = "ifany")
 
@@ -54,12 +56,50 @@ fwrite(
   sep = "\t"
 )
 
+# controls only vs AD
+pheno_ctrl_vs_AD <- meta[
+  TYPE %in% c("CONTROL", "AD"),
+  .(
+    FID,
+    IID,
+    Pheno_ctrl_vs_AD = fifelse(TYPE == "CONTROL", 1L, 2L)
+  )
+]
+
+fwrite(
+  pheno_ctrl_vs_AD,
+  "../snp_array/covariates_and_phenotype_files/Pheno_controlsOnly_vs_AD.txt",
+  sep = "\t"
+)
+
+# controls only vs LBD
+pheno_ctrl_vs_LBD <- meta[
+  TYPE %in% c("CONTROL", "LBD"),
+  .(
+    FID,
+    IID,
+    Pheno_ctrl_vs_LBD = fifelse(TYPE == "CONTROL", 1L, 2L)
+  )
+]
+
+fwrite(
+  pheno_ctrl_vs_LBD,
+  "../snp_array/covariates_and_phenotype_files/Pheno_controlsOnly_vs_LBD.txt",
+  sep = "\t"
+)
+
 # Quick checks
-cat("\ncontrols+PA vs AD:\n")
+cat("\ncontrols + PA vs AD:\n")
 print(table(pheno_ctrlPA_vs_AD$Pheno_ctrlPA_vs_AD))
 
-cat("\ncontrols+PA vs LBD:\n")
+cat("\ncontrols + PA vs LBD:\n")
 print(table(pheno_ctrlPA_vs_LBD$Pheno_ctrlPA_vs_LBD))
 
 cat("\nAD vs LBD:\n")
 print(table(pheno_AD_vs_LBD$Pheno_AD_vs_LBD))
+
+cat("\ncontrols only vs AD:\n")
+print(table(pheno_ctrl_vs_AD$Pheno_ctrl_vs_AD))
+
+cat("\ncontrols only vs LBD:\n")
+print(table(pheno_ctrl_vs_LBD$Pheno_ctrl_vs_LBD))

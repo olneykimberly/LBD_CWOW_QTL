@@ -29,6 +29,9 @@ mkdir -p ../snp_array/plink_logs
 # AD vs LBD
 # exploratory analysis testing whether SNPs differ between the two disease groups directly
 
+# controls only vs AD/LBD = cleaner neuropathology-free reference
+# controls + PA vs AD/LBD = broader nonclinical/preclinical reference
+
 FINAL_BFILE="../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC"
 PHENO_COVAR="../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed_final.txt"
 OUTDIR="../snp_array/associations_with_imputed_snps"
@@ -68,3 +71,28 @@ plink \
   --covar-name PC1,PC2,PC3,PC4,PC5,Age,Sex \
   --hide-covar \
   --out ${OUTDIR}/GWAS_AD_vs_LBD
+
+
+# controls only vs AD
+plink \
+  --bfile ${FINAL_BFILE} \
+  --logistic \
+  --ci 0.95 \
+  --pheno ../snp_array/covariates_and_phenotype_files/Pheno_controlsOnly_vs_AD.txt \
+  --pheno-name Pheno_ctrl_vs_AD \
+  --covar ${PHENO_COVAR} \
+  --covar-name PC1,PC2,PC3,PC4,PC5,Age,Sex \
+  --hide-covar \
+  --out ${OUTDIR}/GWAS_ControlsOnly_vs_AD
+
+# controls only vs LBD
+plink \
+  --bfile ${FINAL_BFILE} \
+  --logistic \
+  --ci 0.95 \
+  --pheno ../snp_array/covariates_and_phenotype_files/Pheno_controlsOnly_vs_LBD.txt \
+  --pheno-name Pheno_ctrl_vs_LBD \
+  --covar ${PHENO_COVAR} \
+  --covar-name PC1,PC2,PC3,PC4,PC5,Age,Sex \
+  --hide-covar \
+  --out ${OUTDIR}/GWAS_ControlsOnly_vs_LBD

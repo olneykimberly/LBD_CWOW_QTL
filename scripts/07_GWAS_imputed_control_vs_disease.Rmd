@@ -128,8 +128,20 @@ tasks_logistic_stratified <- list(
   list(
     "../snp_array/associations_with_imputed_snps/GWAS_AD_vs_LBD.assoc.logistic",
     "AD vs LBD",
-    c("#4d4d4d", "#969696"),
+    c("#4d4d4d", "#803b3bff"),
     "AD_vs_LBD"
+  ),
+  list(
+    "../snp_array/associations_with_imputed_snps/GWAS_ControlsOnly_vs_AD.assoc.logistic",
+    "Controls Only vs AD",
+    c("#621717ff", "#c40f24ff"),
+    "ControlsOnly_vs_AD"
+  ),
+  list(
+    "../snp_array/associations_with_imputed_snps/GWAS_ControlsOnly_vs_LBD.assoc.logistic",
+    "Controls Only vs LBD",
+    c("#4a2c4fff", "#080808ff"),
+    "ControlsOnly_vs_LBD"
   )
 )
 
@@ -143,4 +155,12 @@ for (task in tasks_logistic_stratified) {
     output_prefix = task[[4]]
   )
 }
+
+lapply(gwas_logistic_stratified_results, function(x) {
+  list(
+    n_rows = nrow(x),
+    n_with_rsid = sum(!is.na(x$rsid)),
+    n_with_gene = sum(!is.na(x$gene))
+  )
+})
 ```
