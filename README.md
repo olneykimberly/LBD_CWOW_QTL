@@ -1029,13 +1029,16 @@ final phenotype/covariate table:\
 Genome-wide association studies (GWAS) test thousands of genetic variants across many genomes to find those statistically associated with a specific trait or disease. Here we will determine linear assocaitions between variants and disease traits of Braak NFT stage, Thal amyloid phase, and the counts of Lewy bodies in the cingulate cortex. Model adjustes for covariates PC1-5 to account for population ancestry differences and age and sex. 
 ```
 sh GWAS_post_imputation.sh
+sh GWAS_post_imputation_control_vs_disease.sh
 ```
 
 Make Manhattan plots from GWAS association tests
 ```
 # Manhattan plots from GWAS 
-R 07_GWAS_imputed_pheno.Rmd
-R 08_GWAS_imputed_sex.R
+R 07_GWAS_imputed_linear.Rmd
+R 07_GWAS_imputed_age.Rmd
+R 07_GWAS_imputed_logistic.Rmd
+R 08_GWAS_imputed_sex.R 
 ```
 
 ### Update metadata file, counts data, and genotype file 
@@ -1052,7 +1055,6 @@ plink \
 cd /tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/final_gwas_dataset
 
 r create_n579_metadata.R
-
 ```
 
 
