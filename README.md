@@ -1057,7 +1057,20 @@ cd /tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/snp_array/final_gwas_datas
 r create_n579_metadata.R
 ```
 
+# Process files for eQTL
+```
+R chr_to_rsid.R
+plink \
+  --bfile ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC \
+  --update-name ../snp_array/reference/update_rsid_map.txt \
+  --make-bed \
+  --out ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC_rsID
+# Now our .bim will contain rsIDs.
 
+
+sh format_genotype_file.sh
+R process_files_for_eQTL.Rmd
+```
 
 
 

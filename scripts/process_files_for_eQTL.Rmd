@@ -12,20 +12,7 @@ params:
 
 This notebook prepares matched genotype, metadata, and expression matrices for eQTL analysis using the final cleaned 579-sample imputed genotype dataset.
 
-The final genotype input is:
-
-final_bfile_prefix <- "../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC"
-final_raw_genotype <- "../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC.clean_genotype.raw"
-
-cat("Final PLINK prefix:", final_bfile_prefix, "\n")
-cat("Final additive genotype file:", final_raw_genotype, "\n")
-
-Before running this Rmd, export the additive genotype file from the final PLINK dataset:
-Run in shell before knitting:
- plink --bfile ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC \
-       --recodeA \
-       --out ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC.clean_genotype
-Genotype data setup
+The final genotype input is:CWOW_TOPMED_final_postQC_n579.clean_genotype.raw
 
 The additive genotype file is read directly into R, subset to the final 579 samples, reordered to match metadata, and transposed so that SNPs are rows and samples are columns.
 
@@ -44,6 +31,7 @@ suppressPackageStartupMessages({
   library(sva)
   library(DGEobj.utils)
   library(ggplot2)
+  library(txdbmaker)
 })
 ```
 
@@ -63,7 +51,6 @@ genotype_matrix[[1]] <- NULL
 genotype_matrix <- genotype_matrix[, metadata$IID, drop = FALSE]
 stopifnot(all(colnames(genotype_matrix) == metadata$IID))
 
-
 # Save the formatted data to a file
 write.table(genotype_matrix, file = "../snp_array/CWOW_n579_filtered_genotype_data.txt", sep = " ", quote = FALSE, col.names = NA)
 ```
@@ -73,8 +60,8 @@ write.table(genotype_matrix, file = "../snp_array/CWOW_n579_filtered_genotype_da
 Obtain summed exonic gene lengths for conversion of counts to TPM values.
 ```{r}
 # Read in GTF and construct TxDb
-txdb <- makeTxDbFromGFF(
-  "/research/labs/neurology/fryer/projects/references/human/gencode.v38.annotation.gtf",
+txdb <- txdbmaker::makeTxDbFromGFF(
+  "/tgen_labs/jfryer/projects/references/human/GRCh38/gencode.v38.annotation.sorted.gtf",
   format = "gtf"
 )
 
@@ -89,17 +76,18 @@ exonic_length <- as.data.frame(exonic.gene.sizes)
 exonic_length$gene_id <- rownames(exonic_length)
 
 # Read gene information used in the bulk RNA-seq data
-genes <- fread("../RNA_counts/genes_filtered.txt")
+genes <- fread("../RNA_counts/genes_filtered_protein_coding.txt")
 
 # Add exon length information
 genes_with_exonic_length <- merge(genes, exonic_length, by = "gene_id")
 
 # Inspect
 head(genes_with_exonic_length)
-Counts data setup
+```
 
+# Counts data setup
 The bulk RNA-seq count matrix is subset to the 579 samples retained in the final genotype dataset, renamed from NPID to IID, and reordered to match metadata and genotype sample order.
-
+```{r}
 # Read counts table
 counts <- fread("../RNA_counts/counts_filtered.txt")
 counts <- as.data.table(counts)
@@ -131,36 +119,37 @@ mode(counts_matrix) <- "numeric"
 
 # Sanity checks
 stopifnot(all(colnames(counts_matrix) == metadata$IID))
-stopifnot(all(colnames(counts_matrix) == colnames(genotype_matrix)))
+#stopifnot(all(colnames(counts_matrix) == colnames(genotype_matrix)))
 
 # Inspect
 dim(counts_matrix)[1:2]
 head(rownames(counts_matrix))
 head(colnames(counts_matrix))
-ComBat-Seq batch correction
+```
 
+# ComBat-Seq batch correction
 Apply batch correction to the count matrix while preserving disease group.
-
+```{r}
 adjusted <- ComBat_seq(
   counts = counts_matrix,
   batch = metadata$batch,
   group = metadata$TYPE
 )
-Compare raw and adjusted counts
+#Compare raw and adjusted counts
 
-This section compares log2 CPM values before and after ComBat-Seq correction on a per-sample basis.
+#This section compares log2 CPM values before and after ComBat-Seq correction on a per-sample basis.
 
 lcpm <- edgeR::cpm(counts_matrix, log = TRUE)
 ladjusted <- edgeR::cpm(adjusted, log = TRUE)
 
 num_samples <- ncol(counts_matrix)
+```
 
+```{r plot, eval=FALSE}
 for (i in seq_len(num_samples)) {
   lcpm_sample <- lcpm[, i]
   ladjusted_sample <- ladjusted[, i]
-
   corr_value <- round(cor(lcpm_sample, ladjusted_sample), 2)
-
   plot_title <- paste("Sample", colnames(lcpm)[i], "\nCorrelation:", corr_value)
 
   p <- ggplot(
@@ -178,17 +167,19 @@ for (i in seq_len(num_samples)) {
 
   plot(p)
 
-  saveToPDF(
+  ggsave(
     paste0("../results/combat/", colnames(lcpm)[i], ".pdf"),
     width = 4,
     height = 4
   )
 }
 dev.off()
-TPM counts
+```
 
+
+# TPM counts
 Convert raw and ComBat-adjusted counts to log2 TPM.
-
+```{r}
 # TPM from ComBat-adjusted counts
 adjusted_nozero <- adjusted
 adjusted_nozero[adjusted_nozero == 0] <- 1e-6
@@ -224,11 +215,13 @@ write.table(
   sep = "\t",
   quote = FALSE
 )
-Save matched outputs for eQTL analysis
+```
 
+Save matched outputs for eQTL analysis
 Save matched metadata, genotype, and expression matrices for downstream eQTL workflows.
 
 # Save matched metadata
+```{r}
 fwrite(
   metadata,
   "../metadata/n579_metadata_matched_for_eQTL.txt",
@@ -247,7 +240,7 @@ write.table(
 # Save raw matched counts
 write.table(
   counts_matrix,
-  file = "../RNA_counts/n579_counts_matrix_matched.txt",
+  file = "../RNA_counts/n579_TPM_counts_matrix_matched.txt",
   sep = "\t",
   quote = FALSE,
   col.names = NA
@@ -256,15 +249,16 @@ write.table(
 # Save ComBat-adjusted counts
 write.table(
   adjusted,
-  file = "../RNA_counts/n579_combat_adjusted_counts.txt",
+  file = "../RNA_counts/n579_TPM_combat_adjusted_counts.txt",
   sep = "\t",
   quote = FALSE,
   col.names = NA
 )
-Final checks
+```
 
+# Final checks
 Confirm that genotype, counts, and metadata all use the same 579 samples in the same order.
-
+```{r}
 cat("Metadata samples: ", nrow(metadata), "\n")
 cat("Genotype samples: ", ncol(genotype_matrix), "\n")
 cat("Counts samples: ", ncol(counts_matrix), "\n")
@@ -275,3 +269,4 @@ stopifnot(all(metadata$IID == colnames(genotype_matrix)))
 stopifnot(all(metadata$IID == colnames(counts_matrix)))
 
 cat("All matched sample checks passed.\n")
+```
