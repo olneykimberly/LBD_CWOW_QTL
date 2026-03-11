@@ -119,7 +119,7 @@ mode(counts_matrix) <- "numeric"
 
 # Sanity checks
 stopifnot(all(colnames(counts_matrix) == metadata$IID))
-#stopifnot(all(colnames(counts_matrix) == colnames(genotype_matrix)))
+stopifnot(all(colnames(counts_matrix) == colnames(genotype_matrix)))
 
 # Inspect
 dim(counts_matrix)[1:2]
@@ -229,7 +229,7 @@ fwrite(
 )
 
 # Save genotype matrix
-write.table(
+fwrite(
   genotype_matrix,
   file = "../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC_genotype_matrix.txt",
   sep = "\t",
