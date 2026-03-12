@@ -1,4 +1,5 @@
 ## ----setup------------------------------------------------------------------------------------------------------------
+.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library/"))
 setwd("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/")
 source(here::here("/tgen_labs/jfryer/kolney/LBD_CWOW/QTL/LBD_CWOW_QTL/scripts/", "file_paths_and_colours.R"))
 library(dplyr)
@@ -6,10 +7,11 @@ library(data.table)
 library(MatrixEQTL)
 library(tidyverse)
 library(rtracklayer)
-library(GenomicRanges)
+library(GenomicRanges
+)
 
 ## ----expression_data--------------------------------------------------------------------------------------------------
-expression_data <- fread("../RNA_counts/n580_TPM_combat_adjusted_counts_log2.txt")
+expression_data <- fread("../RNA_counts/n579_TPM_combat_adjusted_counts_log2.txt")
 # Set the row names using the first column and remove it from the data frame
 rownames(expression_data) <- expression_data$V1
 expression_data$V1 <- NULL
@@ -17,18 +19,18 @@ column_order <- colnames(expression_data)
 
 
 ## ----covariates_data--------------------------------------------------------------------------------------------------
-covar <- read.delim("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes.txt")
-meta <- read.delim("../metadata/n580_metadata.txt")
+covar <- read.delim("../snp_array/covariates_and_phenotype_files/covariates_and_phenotypes_imputed_final.txt")
+meta <- read.delim("../metadata/n579_metadata_matched_for_eQTL.txt")
 
 # Assume 'batch' is a factor variable representing batch IDs
 batch <- factor(meta$flowcell_and_lane)  
 
 # Create the model matrix for the batch variable
-batch_matrix <- model.matrix(~ batch - 1)
+#batch_matrix <- model.matrix(~ batch - 1)
 # Convert to a data frame or matrix as needed
-batch_matrix <- as.data.frame(batch_matrix)
+#batch_matrix <- as.data.frame(batch_matrix)
 # Include these columns in your covariate matrix for MatrixEQTL
-meta$batch <- batch_matrix
+#meta$batch <- batch_matrix
 
 
 table(meta$TYPE)
@@ -36,15 +38,14 @@ meta <- meta[, c(1, 9, 44)] # RIn 44, disease status 61, batch 52-59
 #meta_df <- cbind(batch_matrix, meta)
 #df  <- merge(covar, meta_df, by = "IID") # combine covariates and metadata so that RIN is now included
 df  <- merge(covar, meta, by = "IID") # combine covariates and metadata so that RIN is now included
-
 # Remove FID and pheno column 
 df$FID <- NULL
 df$Pheno <- NULL
 
 # Further define the sample types by A-T-S status 
-df$TYPE.ATS <- ifelse(df$TYPE == "LBD" & df$Braak.NFT <= 3 & df$Thal.amyloid < 2, "LBD_S",
-                             ifelse(df$TYPE == "LBD" & df$Braak.NFT > 3 & df$Thal.amyloid >= 2, "LBD_ATS",
-                                    ifelse(df$TYPE == "LBD" & df$Braak.NFT <= 3 & df$Thal.amyloid >= 2, "LBD_AS", # high amyloid 
+df$TYPE.ATS <- ifelse(df$TYPE == "LBD" & df$Braak <= 3 & df$Thal < 2, "LBD_S",
+                             ifelse(df$TYPE == "LBD" & df$Braak > 3 & df$Thal >= 2, "LBD_ATS",
+                                    ifelse(df$TYPE == "LBD" & df$Braak <= 3 & df$Thal >= 2, "LBD_AS", # high amyloid 
                                       ifelse(df$TYPE == "AD", "AD",
                                            ifelse(df$TYPE == "PA", "PA",
                                                   ifelse(df$TYPE == "CONTROL", "CONTROL", "LBD_TS") # high Braak
@@ -59,28 +60,42 @@ table(df$TYPE.ATS) # inspect
 
 
 ## ----genotype_data----------------------------------------------------------------------------------------------------
-# Read in the genotype file. A zero indicates the individual is homozygous reference, a 1 is heterozygous, a 2 is homozygous alternate 
-CWOW_snps <- fread("../snp_array/imputed_genotype_table.txt") 
-CWOW_snps$IID <- sub("_.*", "", CWOW_snps$IID) # remove the allele information in the snpid 
+CWOW_snps <- fread("../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC_genotype_matrix.txt")
+colnames(CWOW_snps)
 
-# add .2 only to the second occurrence of each duplicate (leaving the first as is)
-CWOW_snps$IID <- ave(CWOW_snps$IID, CWOW_snps$IID, FUN = function(x) {
-  if (length(x) > 1) paste0(x, ".", seq_along(x)) else x
-})
-rownames(CWOW_snps) <- CWOW_snps$IID
+# Rename last column to snpid
+setnames(CWOW_snps, old = colnames(CWOW_snps)[ncol(CWOW_snps)], new = "snpid")
 
-# rownames(CWOW_snps)  <- CWOW_snps$IID # set as rownames 
-CWOW_snps$IID <- NULL # remove the column containing the snpids
-snp_ids <- rownames(CWOW_snps) # create a vector of the snpids to add as rownames 
-# colnames(CWOW_snps) # inspect column names 
-rownames(CWOW_snps) <- snp_ids # add snpid as rownames 
-write.table(snp_ids, "../snp_array/imputed_snp_ids_GRCh38.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+# Remove allele suffix if present
+CWOW_snps[, snpid := sub("_.*", "", snpid)]
 
+# Move snpid column to the front
+CWOW_snps <- CWOW_snps[, c("snpid", setdiff(names(CWOW_snps), "snpid")), with = FALSE]
+
+# Optional sanity checks
+stopifnot(!anyDuplicated(CWOW_snps$snpid))
+
+cat("Rows (SNPs):", nrow(CWOW_snps), "\n")
+cat("Columns (including snpid):", ncol(CWOW_snps), "\n")
+
+# Write SNP matrix for MatrixEQTL
+fwrite(
+  CWOW_snps,
+  "../snp_array/Filtered_n579_CWOW_genotype_data_no_allele_info.txt",
+  sep = "\t"
+)
+
+# Save SNP IDs separately
+fwrite(
+  CWOW_snps[, .(snpid)],
+  "../snp_array/CWOW_final_imputed_snp_ids_GRCh38.txt",
+  sep = "\t"
+)
 
 ## ----subset-----------------------------------------------------------------------------------------------------------
 # Next we need the sample IDs (aka the IIDs) to be the columns and the rows to be the covariates
 # This section reformats the data frame & subsets by disease type 
-snp_ids <- read.delim("../snp_array/imputed_snp_ids_GRCh38.txt")
+snp_ids <- read.delim("../snp_array/CWOW_final_imputed_snp_ids_GRCh38.txt")
 
 # Define  subsets
 subsets <- list(
@@ -102,7 +117,7 @@ for (subset_name in names(subsets)) {
   # Filter the expression data to include only IIDs present in the subset
   expression_data_subset <- expression_data[, .SD, .SDcols = df_subset$IID]
   # Write the output to a file
-  exp_output_file <- paste0("../RNA_counts/n580_TPM_combat_adjusted_counts_log2_", subset_name, "_imputed.txt")
+  exp_output_file <- paste0("../RNA_counts/cwow_", subset_name, "_imputed.txt")
   write.table(expression_data_subset, exp_output_file, quote = FALSE, sep = "\t", row.names = TRUE)
   column_order <- colnames(expression_data_subset)
   
@@ -140,19 +155,19 @@ for (subset_name in names(subsets)) {
   names(cvrt_filtered)[1] <- "variable"
   
   # Write the output to a file
-  cov_output_file <- paste0("../snp_array/covariates_and_phenotype_files/covariates_", subset_name, "_imputed.txt")
+  cov_output_file <- paste0("../snp_array/covariates_and_phenotype_files/cwow_covariates_", subset_name, "_imputed.txt")
   write.table(cvrt_filtered, cov_output_file, quote = FALSE, sep = "\t", row.names = FALSE)
   
   CWOW_snps_reordered <- CWOW_snps[, ..column_order] # reorder to match the order of the expression data  
   rownames(CWOW_snps_reordered) <- snp_ids$x
-  snp_output_file <- paste0("../snp_array/Filtered_n580_CWOW_genotype_data_", subset_name, "_imputed.txt")
-  write.table(CWOW_snps_reordered, snp_output_file, sep = " ", quote = FALSE)
+  snp_output_file <- paste0("../snp_array/cwow_", subset_name, "_imputed.txt")
+  fwrite(CWOW_snps_reordered, snp_output_file, sep = " ")
 }
 
 
 ## ----SNP_and_gene_data------------------------------------------------------------------------------------------------
 # Read in gene information. These are the genes used in the bulk RNAseq differential expression analysis.
-genes <- fread("../RNA_counts/genes_filtered.txt")
+genes <- fread("../RNA_counts/genes_filtered_protein_coding.txt")
 gene_info <- genes[,c(1:4)] # Keep only columns 1 - 4
 colnames(gene_info) <- c("geneid","chr", "left", "right") # Rename the columns 
 

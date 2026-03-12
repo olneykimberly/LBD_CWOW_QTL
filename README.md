@@ -1067,23 +1067,8 @@ plink \
   --out ../snp_array/final_gwas_dataset/CWOW_TOPMED_final_postQC_rsID
 # Now our .bim will contain rsIDs.
 
-
 sh format_genotype_file.sh
 R process_files_for_eQTL.Rmd
-```
-
-
-
-
-# --- HERE
-```
-awk '{gsub(/ /,"\t"); print}' gwas_filtered_data.clean_genotype.raw > output_file_additional_filtering.txt
-salloc --mem=200G --cpus-per-task=4 --time=2:00:00
-
-datamash transpose < output_file_additional_filtering.txt > transposed_data_additional_filters.txt
-sed -e '1d; 3,6d' transposed_data.txt > ../gwas_filtered_data.genotype_formatted.txt
-
-R 04_process_impute_genotype.Rmd
 ```
 
 # Get SNP annotation
@@ -1093,7 +1078,9 @@ tabix -p vcf All_20180418.vcf.gz # index
 bcftools view -m2 -M2 All_20180418.vcf.gz > All_20180418_biallelic_output.vcf.gz # get only biallelic sites 
 ```
 
-### Step 7: Run Matrix eQTL 
+# UPDATE HERE
+#--- HERE 
+### Run Matrix eQTL 
 Firstly, the files will need some additional formatting. Then we can run the eQTl analysis, with or without including an interaction term with disease. 
 ```
 # Format the inputs 
