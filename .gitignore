@@ -12,3 +12,6 @@ MatrixEQTL/*
 shiny_app/*
 rpubs.com/*
 scripts/rsconnect/*
+scripts/*.out
+scripts/*.job*
+scripts/2024_2025_old/*
